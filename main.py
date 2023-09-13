@@ -10,9 +10,22 @@ from flask import Flask, render_template
 
 CDT = datetime.timezone(datetime.timedelta(hours=-5))
 PRO_MATCHUPS = {}
-PROFILES = json.loads(os.environ.get('profiles'))
+PROFILES = {}
 
 app = Flask(__name__)
+
+
+def load_profiles():
+
+    for league in os.environ.get('profiles', []).split('||'):
+        
+        league_data = league.split('|')
+        
+        if league_data[0] not in PROFILES.keys():
+            PROFILES[league_data[0]] = []
+        
+        PROFILES[league_data[0]].append(league_data[1:])
+
 
 def initialize_league(platform: str, league_id: int, year: int):
 
@@ -195,6 +208,8 @@ def index_week(profile: str, week: int):
     
     profile = PROFILES.get(profile)
 
+    print(profile)
+
     if not profile:
         return "Profile not found"
 
@@ -203,14 +218,18 @@ def index_week(profile: str, week: int):
     matchups = []
 
     for league_data in profile:
-        matchup_db[league_data[2]] = {
-            'name': league_data[0],
-            'points': get_current_points(league_data[1], league_data[2], week)
-        }
-        team_db[league_data[2]] = league_data[3]
+
+        name = league_data[0]
+        platform = league_data[1]
+        league_id = int(league_data[2])
+        team_id = int(league_data[3])
+
+        matchup_db[league_id] = {'name': name, 'points': get_current_points(platform, league_id, week)}
+        team_db[league_id] = team_id
 
     for league_id, league_matchups in matchup_db.items():
         for matchup in league_matchups.get('points'):
+            print(matchup[0][0].get('id'), team_db.get(league_id))
             if matchup[0][0].get('id') == team_db.get(league_id):
                 matchups.append((league_matchups.get('name'), organize_team(matchup[0]), organize_team(matchup[1])))
                 break
@@ -221,5 +240,12 @@ def index_week(profile: str, week: int):
     return render_template('leagues.html', matchups=matchups)
 
 
+@app.route("/", methods=['GET'])
+def index():
+    return ""
+
+
 if __name__ == '__main__':
+    load_profiles()
+    print(json.dumps(PROFILES, indent=4))
     app.run()
