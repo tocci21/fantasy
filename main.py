@@ -10,18 +10,31 @@ from google.cloud import secretmanager_v1
 from yaml import safe_load
 
 CDT = datetime.timezone(datetime.timedelta(hours=-5))
+PROFILES = {
+    'david': [
+        ['Z League', 'espn', 30191259, 6],
+        ['D League', 'espn', 1447623889, 1],
+        ['T League', 'sleeper', 992213857386684416, 8]
+    ],
+    'marisol': [
+        ['Z League', 'espn', 30191259, 3],
+        ['D League', 'espn', 1447623889, 9],
+        ['T League', 'sleeper', 992213857386684416, 12]
+    ]
+}
+
 PRO_MATCHUPS = {}
 
 app = Flask(__name__)
 
 
-def load_profiles() -> dict:
+# def load_profiles() -> dict:
 
-    client = secretmanager_v1.SecretManagerServiceClient()
-    name = f"projects/{os.environ.get('project')}/secrets/fantasy-profiles/versions/latest"
-    data = client.access_secret_version(name=name).payload.data.decode("UTF-8")
+#     client = secretmanager_v1.SecretManagerServiceClient()
+#     name = f"projects/{os.environ.get('project')}/secrets/fantasy-profiles/versions/latest"
+#     data = client.access_secret_version(name=name).payload.data.decode("UTF-8")
 
-    return  json.loads(data)
+#     return  json.loads(data)
 
 
 def initialize_league(platform: str, league_id: int, year: int):
@@ -203,7 +216,7 @@ def index_profile(profile: str):
 @app.route("/<string:profile>/<int:week>", methods=['GET'])
 def index_week(profile: str, week: int):
     
-    load_profiles()
+    # load_profiles()
     profile = PROFILES.get(profile)
 
     if not profile:
@@ -242,5 +255,5 @@ def index():
 
 if __name__ == '__main__':
 
-    PROFILES = load_profiles()
+    # PROFILES = load_profiles()
     app.run()
