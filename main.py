@@ -211,7 +211,7 @@ def index_week(profile: str, week: int):
     print(profile)
 
     if not profile:
-        return f"Profile not found. Profiles: {', '.join(PROFILES.keys()}"
+        return f"Profile not found. Profiles: {', '.join(PROFILES.keys())}"
 
     matchup_db = {}
     team_db = {}
