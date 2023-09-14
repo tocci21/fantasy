@@ -1,30 +1,27 @@
-import json
 import datetime
+import json
 import os
 
 import requests
-from espn_api.football import League
-from yaml import safe_load
 from bs4 import BeautifulSoup
+from espn_api.football import League
 from flask import Flask, render_template
+from google.cloud import secretmanager_v1
+from yaml import safe_load
 
 CDT = datetime.timezone(datetime.timedelta(hours=-5))
 PRO_MATCHUPS = {}
-PROFILES = {}
 
 app = Flask(__name__)
 
 
-def load_profiles():
+def load_profiles() -> dict:
 
-    for league in os.environ.get('profiles', []).split('||'):
-        
-        league_data = league.split('|')
-        
-        if league_data[0] not in PROFILES.keys():
-            PROFILES[league_data[0]] = []
-        
-        PROFILES[league_data[0]].append(league_data[1:])
+    client = secretmanager_v1.SecretManagerServiceClient()
+    name = f"projects/{os.environ.get('project')}/secrets/fantasy-profiles/versions/latest"
+    data = client.access_secret_version(name=name).payload.data.decode("UTF-8")
+
+    return  json.loads(data)
 
 
 def initialize_league(platform: str, league_id: int, year: int):
@@ -208,8 +205,6 @@ def index_week(profile: str, week: int):
     
     profile = PROFILES.get(profile)
 
-    print(profile)
-
     if not profile:
         return f"Profile not found. Profiles: {', '.join(PROFILES.keys())}"
 
@@ -229,7 +224,6 @@ def index_week(profile: str, week: int):
 
     for league_id, league_matchups in matchup_db.items():
         for matchup in league_matchups.get('points'):
-            print(matchup[0][0].get('id'), team_db.get(league_id))
             if matchup[0][0].get('id') == team_db.get(league_id):
                 matchups.append((league_matchups.get('name'), organize_team(matchup[0]), organize_team(matchup[1])))
                 break
@@ -246,6 +240,6 @@ def index():
 
 
 if __name__ == '__main__':
-    load_profiles()
-    print(json.dumps(PROFILES, indent=4))
+
+    PROFILES = load_profiles()
     app.run()
