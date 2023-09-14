@@ -28,15 +28,6 @@ PRO_MATCHUPS = {}
 app = Flask(__name__)
 
 
-# def load_profiles() -> dict:
-
-#     client = secretmanager_v1.SecretManagerServiceClient()
-#     name = f"projects/{os.environ.get('project')}/secrets/fantasy-profiles/versions/latest"
-#     data = client.access_secret_version(name=name).payload.data.decode("UTF-8")
-
-#     return  json.loads(data)
-
-
 def initialize_league(platform: str, league_id: int, year: int):
 
     if platform == 'espn':
@@ -93,7 +84,7 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
                     players.append(player)
 
                     if player_data.proTeam not in PRO_MATCHUPS.keys():
-                        PRO_MATCHUPS[player_data.proTeam] = (player_data.game_date, player_data.game_played == 100)
+                        PRO_MATCHUPS[player_data.proTeam] = (player.get('gametime'), player_data.game_played == 100)
 
                 matchup.append(players)
             matchups.append(matchup)
@@ -146,7 +137,7 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
 
                 player['gametime'] = gametime
 
-                if get_current_central_datetime() >= gametime.replace(tzinfo=CDT):
+                if get_current_central_datetime() >= gametime:
                     if gamedone:
                         player['play_status'] = 'played'
                     else:
@@ -178,7 +169,7 @@ def player_sort(item: dict) -> int:
 
 def get_current_central_datetime() -> datetime.datetime:
 
-    now = datetime.datetime.now(CDT)
+    now = datetime.datetime.utcnow().replace(tzinfo=CDT)
 
     if now.month >= 11 and now.day >= 5:
         now += datetime.timedelta(hours=-1)
