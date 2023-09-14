@@ -185,10 +185,11 @@ def organize_team(players: list) -> dict:
 
     for player in players[1:]:
 
-        if player.get('play_status') != 'future':
-            player['display'] = player.get('points')
-        else:
-            player['display'] = str(player.get('gametime').replace(tzinfo=CDT).strftime("%a %I:%M"))  # .replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
+        player['display'] = player.get('points')
+        # if player.get('play_status') != 'future':
+        #     player['display'] = player.get('points')
+        # else:
+        #     player['display'] = str(player.get('gametime').replace(tzinfo=CDT).strftime("%a %I:%M"))  # .replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
 
         team['inactive' if player.get('slot') in ['BE', 'IR'] else 'active'].append(player)
 
@@ -248,5 +249,4 @@ def index():
 
 if __name__ == '__main__':
 
-    # PROFILES = load_profiles()
     app.run()
