@@ -199,7 +199,7 @@ def organize_team(players: list) -> dict:
 
 
 @app.route("/<string:profile>", methods=['GET'])
-def index(profile: str):
+def index_profile(profile: str):
     return index_week(profile, get_current_week())
 
 
