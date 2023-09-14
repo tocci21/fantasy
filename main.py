@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -22,6 +23,7 @@ PROFILES = {
         ['T League', 'sleeper', 992213857386684416, 12]
     ]
 }
+
 
 PRO_MATCHUPS = {}
 
@@ -186,7 +188,7 @@ def organize_team(players: list) -> dict:
         if player.get('play_status') != 'future':
             player['display'] = player.get('points')
         else:
-            player['display'] = player.get('gametime').strftime("%a %I:%M")  # .replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
+            player['display'] = str(player.get('gametime').replace(tzinfo=CDT).strftime("%a %I:%M"))  # .replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
 
         team['inactive' if player.get('slot') in ['BE', 'IR'] else 'active'].append(player)
 
