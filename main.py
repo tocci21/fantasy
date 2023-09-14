@@ -203,6 +203,7 @@ def index_profile(profile: str):
 @app.route("/<string:profile>/<int:week>", methods=['GET'])
 def index_week(profile: str, week: int):
     
+    load_profiles()
     profile = PROFILES.get(profile)
 
     if not profile:
