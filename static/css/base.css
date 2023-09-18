@@ -14,25 +14,31 @@
         grid-template-columns: 49% 2% 49%;
         margin-bottom: 20px;
     }
+
+    .player {
+        margin-bottom: 5px;
+    }
 }
 
 /* Desktop */
 
 @media only screen and (min-width : 1025px)
 {
-    .matchups {
-        padding: 10px;
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(3, 30%);
-        grid-column-gap: 40px;
-    }
-    
     .matchup {
         display: grid;
         grid-template-columns: 47.5% 5% 47.5%;
         margin-bottom: 20px;
+        width: 30%;
     }
+
+    .player {
+        margin-bottom: 2px;
+    }
+}
+
+body {
+    background-color: black;
+    color: white;
 }
 
 .league-name {
@@ -46,19 +52,28 @@
 }
 
 .team-header.even {
-    grid-template-columns: 80% 20%;
+    grid-template-columns: 55% 20% 25%;
 }
 
 .team-header.odd {
-    grid-template-columns: 20% 80%;
+    grid-template-columns: 25% 20% 55%;
 }
 
 .team-name {
     display: grid;
     align-items: center;
-    text-align: center;
     padding: 10px 5px 5px 5px;
     font-weight: bolder;
+}
+
+.team-header.even .team-name {
+    padding-right: 10px;
+    text-align: right;
+}
+
+.team-header.odd .team-name {
+    padding-left: 10px;
+    text-align: left;
 }
 
 .team-points {
@@ -75,40 +90,18 @@
     padding-bottom: 5px;
 }
 
-.players.even {
-    border-right: 1px solid #000;
-    border-bottom: 1px solid #000;
-}
-
-.players.odd {
-    border-right: 1px solid #000;
-    border-bottom: 1px solid #000;
-}
-
 .player {
     display: grid;
-    border-left: 1px solid #000;
-    border-top: 1px solid #000;
+    border: 1px solid #000;
+    border-radius: 25px;
 }
 
 .player.even {
-    grid-template-columns: 60% 20% 20%;
+    grid-template-columns: 55% 20% 25%;
 }
 
 .player.odd {
-    grid-template-columns: 20% 20% 60%;
-}
-
-.player.qb {
-    background-color: rgb(255, 255, 149);
-}
-
-.player.rb, .player.wr, .player.te {
-    background-color: #AFA;
-}
-
-.player.d, .player.k {
-    background-color: lightgray;
+    grid-template-columns: 25% 20% 55%;
 }
 
 .player div {
@@ -116,42 +109,35 @@
     white-space: nowrap;
 }
 
-.player.even .name, .player.even .projected {
-    border-right: 1px solid black;
+.player.played, .player.active {
+    border-color: black;
 }
 
-.player.odd .name, .player.odd .projected {
-    border-left: 1px solid black;
+.player.future {
+    border-color: #333;
 }
 
-.player.even .name, .player.even .points, .player.even .projected {
+.player.questionable {
+    color: darkorange !important;
+}
+
+.player.injured_reserved, .player.out, .player.doubtful {
+    color: #d00 !important;
+}
+
+.player .name {
+    padding: 1px 10px;
+}
+
+.player.even .name {
     text-align: right;
-    padding: 5px 10px 5px 5px;
 }
 
-.player.odd .name, .player.odd .points, .player.odd .projected {
-    text-align: left;
-    padding: 5px 5px 5px 10px;
-}
-
-.player .name.questionable {
-    color: orange;
-}
-
-.player .name.injured_reserved, .player .name.out, .player .name.doubtful {
-    color: red;
-}
-
-.player .projected {
+.player .projected, .player .points, .team-points, .team-projected {
     font-family: monospace;
     display: grid;
     align-items: center;
-}
-
-.player .points {
-    font-family: monospace;
-    display: grid;
-    align-items: center;
+    text-align: center;
 }
 
 .player .display {
@@ -159,12 +145,19 @@
     display: grid;
     align-items: center;
     text-align: center;
-    font-size: 0.7em;
     word-wrap: break-word;
 }
 
-.player .name.playing {
-    text-decoration: underline;
+.player.playing {
+    background-color: darkgreen;
+}
+
+.player.played {
+    background-color: #333;
+}
+
+.player.future {
+    background-color: black;
 }
 
 .refresh {

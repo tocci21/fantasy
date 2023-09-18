@@ -75,6 +75,9 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
                         'gametime': player_data.game_date.replace(tzinfo=CDT),
                     }
 
+                    if 'D/ST' not in player.get('name'):
+                        player['name'] = f"{player.get('name')[0]}. {' '.join(player.get('name').split(' ')[1:])}"
+
                     if get_current_central_datetime() >= player.get('gametime'):
                         if player_data.game_played == 100:
                             player['play_status'] = 'played'
@@ -135,9 +138,15 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
                     'slot': player_data.get('fantasy_positions')[0],
                 }
 
+                if 'D/ST' not in player.get('name'):
+                    player['name'] = f"{player.get('name')[0]}. {' '.join(player.get('name').split(' ')[1:])}"
+
                 gametime, gamedone = sleeper_gametime_lookup(player_data.get('team'))
 
                 player['gametime'] = gametime
+
+                print(f"cdt: {get_current_central_datetime()}")
+                print(f" gt: {gametime}")
 
                 if get_current_central_datetime() >= gametime:
                     if gamedone:
@@ -173,6 +182,8 @@ def get_current_central_datetime() -> datetime.datetime:
 
     now = datetime.datetime.utcnow().replace(tzinfo=CDT)
 
+    now += datetime.timedelta(hours=-5)
+
     if now.month >= 11 and now.day >= 5:
         now += datetime.timedelta(hours=-1)
     
@@ -185,11 +196,12 @@ def organize_team(players: list) -> dict:
 
     for player in players[1:]:
 
-        player['display'] = player.get('points')
-        # if player.get('play_status') != 'future':
-        #     player['display'] = player.get('points')
-        # else:
-        #     player['display'] = str(player.get('gametime').replace(tzinfo=CDT).strftime("%a %I:%M"))  # .replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
+        if player.get('play_status') != 'future':
+            player['display_even'] = player['display_odd'] = player.get('points')
+        else:
+            player['display_even'] = player.get('gametime').replace(tzinfo=CDT) \
+            .strftime("%a %I:%M").replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
+            player['display_odd'] = ' '.join(reversed(player.get('display_even').split(' ')))
 
         team['inactive' if player.get('slot') in ['BE', 'IR'] else 'active'].append(player)
 
@@ -209,8 +221,7 @@ def index_profile(profile: str):
 
 @app.route("/<string:profile>/<int:week>", methods=['GET'])
 def index_week(profile: str, week: int):
-    
-    # load_profiles()
+
     profile = PROFILES.get(profile)
 
     if not profile:
@@ -248,5 +259,4 @@ def index():
 
 
 if __name__ == '__main__':
-
     app.run()

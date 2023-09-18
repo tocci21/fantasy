@@ -7,9 +7,6 @@
     <div class="matchups">
         {% for matchup in matchups %}
         <div class="league">
-            <div class="league-name">
-                {{ matchup.0 }}
-            </div>
             <div class="matchup">
                 {% for team in matchup[1:] %}
                     {% set class = "odd" if loop.index0 % 2 == 1 else "even" %}
@@ -17,32 +14,34 @@
                         <div class="team-header {{ class }}">
                             {% if class == "even" %}
                             <div class="team-name">{{ team.info.name|upper }}</div>
+                            <div class="team-projected">{{ team.info.projected }}</div>
                             {% endif %}
                             <div class="team-points">{{ "%.02f"|format(team.points) }}</div>
                             {% if class == "odd" %}
+                            <div class="team-projected">{{ team.info.projected }}</div>
                             <div class="team-name">{{ team.info.name|upper }}</div>
                             {% endif %}
                         </div>
                         <div class="players {{ class }}">
                         {% for player in team.get('active') %}
                         {% if class == "even" %}
-                            <div class="player {{ player.position.split('/')[0].lower() }} {{ class }}">
-                                <div class="name {{ player.status|lower }} {{ player.play_status }}">{{ player.name }}</div>
+                            <div class="player {{ class }} {{ player.play_status }} {{ player.status|lower }}">
+                                <div class="name">{{ player.name }}</div>
                                 {% if player.projected != -1 %}
                                     <div class="projected">{% if player.projected < 10 %}&nbsp;{% endif %}{{ "%.02f"|format(player.projected) }}</div>
                                 {% else %}
                                     <div class="projected"></div>
                                 {% endif %}
                                 {% if player.points != player.display %}
-                                    <div class="display">{{ player.display }}</div>
+                                    <div class="display">{{ player.display_even }}</div>
                                 {% else %}
                                     <div class="points">{% if player.points < 10 %}&nbsp;{% endif %}{{ "%.02f"|format(player.points) }}</div>
                                 {% endif %}
                             </div>
                         {% else %}
-                            <div class="player {{ player.position.split('/')[0].lower() }} {{ class }}">
+                            <div class="player {{ class }} {{ player.play_status }} {{ player.status|lower }}">
                                 {% if player.points != player.display %}
-                                    <div class="display">{{ player.display }}</div>
+                                    <div class="display">{{ player.display_odd }}</div>
                                 {% else %}
                                     <div class="points">{% if player.points < 10 %}&nbsp;{% endif %}{{ "%.02f"|format(player.points) }}</div>
                                 {% endif %}
@@ -51,7 +50,7 @@
                                 {% else %}
                                     <div class="projected"></div>
                                 {% endif %}
-                                <div class="name {{ player.status|lower }} {{ player.play_status }}">{{ player.name }}</div>
+                                <div class="name">{{ player.name }}</div>
                             </div>
                         {% endif %}
                         {% endfor %}
