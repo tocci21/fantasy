@@ -196,10 +196,12 @@ def organize_team(players: list) -> dict:
 
     for player in players[1:]:
 
+        gt = player.get('gametime') + datetime.timedelta(hours=-5)
+
         if player.get('play_status') != 'future':
             player['display_even'] = player['display_odd'] = player.get('points')
         else:
-            player['display_even'] = player.get('gametime') \
+            player['display_even'] = gt \
             .strftime("%a %I:%M").replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
             player['display_odd'] = ' '.join(reversed(player.get('display_even').split(' ')))
 
