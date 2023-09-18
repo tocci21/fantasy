@@ -182,7 +182,7 @@ def get_current_central_datetime() -> datetime.datetime:
 
     now = datetime.datetime.utcnow().replace(tzinfo=CDT)
 
-    now += datetime.timedelta(hours=-5)
+    now += datetime.timedelta(hours=-10)
 
     if now.month >= 11 and now.day >= 5:
         now += datetime.timedelta(hours=-1)
