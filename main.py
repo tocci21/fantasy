@@ -182,7 +182,7 @@ def get_current_central_datetime() -> datetime.datetime:
 
     now = datetime.datetime.utcnow().replace(tzinfo=CDT)
 
-    now += datetime.timedelta(hours=-10)
+    now += datetime.timedelta(hours=-5)
 
     if now.month >= 11 and now.day >= 5:
         now += datetime.timedelta(hours=-1)
@@ -199,7 +199,7 @@ def organize_team(players: list) -> dict:
         if player.get('play_status') != 'future':
             player['display_even'] = player['display_odd'] = player.get('points')
         else:
-            player['display_even'] = player.get('gametime').replace(tzinfo=CDT) \
+            player['display_even'] = player.get('gametime') \
             .strftime("%a %I:%M").replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
             player['display_odd'] = ' '.join(reversed(player.get('display_even').split(' ')))
 
