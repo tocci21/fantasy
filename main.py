@@ -72,7 +72,7 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
                         'projected': player_data.projected_points,
                         'position': player_data.position,
                         'slot': player_data.slot_position,
-                        'gametime': player_data.game_date.replace(tzinfo=CDT),
+                        'gametime': player_data.game_date.replace(tzinfo=CDT) + datetime.timedelta(hours=-5),
                     }
 
                     if 'D/ST' not in player.get('name'):
@@ -145,9 +145,6 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
 
                 player['gametime'] = gametime
 
-                print(f"cdt: {get_current_central_datetime()}")
-                print(f" gt: {gametime}")
-
                 if get_current_central_datetime() >= gametime:
                     if gamedone:
                         player['play_status'] = 'played'
@@ -196,12 +193,10 @@ def organize_team(players: list) -> dict:
 
     for player in players[1:]:
 
-        gt = player.get('gametime') + datetime.timedelta(hours=-5)
-
         if player.get('play_status') != 'future':
             player['display_even'] = player['display_odd'] = player.get('points')
         else:
-            player['display_even'] = gt \
+            player['display_even'] = player.get('gametime') \
             .strftime("%a %I:%M").replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
             player['display_odd'] = ' '.join(reversed(player.get('display_even').split(' ')))
 
