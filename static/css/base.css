@@ -12,7 +12,7 @@
     .matchup {
         display: grid;
         grid-template-columns: 49% 2% 49%;
-        margin-bottom: 15px;
+        margin-bottom: 20px;
     }
 
     .player {
@@ -61,6 +61,7 @@ body {
 
 .team-header {
     display: grid;
+    margin-bottom: 10px;
 }
 
 .team-header.even, .player.even {
