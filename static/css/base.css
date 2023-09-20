@@ -12,11 +12,11 @@
     .matchup {
         display: grid;
         grid-template-columns: 49% 2% 49%;
-        margin-bottom: 10px;
+        margin-bottom: 15px;
     }
 
     .player {
-        margin-bottom: 5px;
+        margin-bottom: 8px;
     }
 
     .refresh {
