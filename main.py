@@ -1,59 +1,39 @@
 import datetime
 import json
-import os
-import time
-
 import requests
-from bs4 import BeautifulSoup
-from espn_api.football import League
+
+from constants import CDT, PROFILES, NO_GAMETIME
+from helpers import initialize_espn_league, translate_team, player_sort, get_current_central_datetime, get_current_week, get_all_projections
+
 from flask import Flask, render_template
 from google.cloud import secretmanager_v1
 from yaml import safe_load
 
-CDT = datetime.timezone(datetime.timedelta(hours=-5))
-PROFILES = {
-    'david': [
-        ['Z League', 'espn', 30191259, 6],
-        ['D League', 'espn', 1447623889, 1],
-        ['T League', 'sleeper', 992213857386684416, 8]
-    ],
-    'marisol': [
-        ['Z League', 'espn', 30191259, 3],
-        ['D League', 'espn', 1447623889, 9],
-        ['T League', 'sleeper', 992213857386684416, 12]
-    ]
-}
-
-
-PRO_MATCHUPS = {}
 
 app = Flask(__name__)
 
 
-def initialize_league(platform: str, league_id: int, year: int):
+def lookup_projected(projections: dict, name: str, team: str, position: str, scoring: str) -> float:
 
-    if platform == 'espn':
-        return League(league_id=league_id, year=year, espn_s2=os.environ.get('s2').replace(' ', ''), swid=os.environ.get('swid'))
+    position = position.replace('/', '').replace('DEF', 'DST')
 
+    if not projections or not name or not team or not position or not scoring:
+        return 0
 
-def sleeper_gametime_lookup(team: str,) -> tuple:
-    translations = {'WAS': 'WSH', 'LV': 'OAK'}
-    return PRO_MATCHUPS.get(translations.get(team) if translations.get(team) else team)
-
-
-def get_current_week():
-    season_start = datetime.datetime(2023, 9, 5, tzinfo=CDT)
-    delta = get_current_central_datetime() - season_start
-    return int(delta.days / 7) + 1
+    try:
+        return projections.get(team).get(position).get(name).get(scoring)
+    except AttributeError:
+        print(f"NOT FOUND: Name: {name} | Team: {team} | Position: {position}")
+        return 0
 
 
-def get_current_points(platform: str, league_id: int, week: int) -> list:
+def get_current_points(data: dict, platform: str, league_id: int, scoring: str, week: int) -> list:
 
     matchups = []
 
     if platform == 'espn':
 
-        league = initialize_league(platform, league_id, 2023)
+        league = initialize_espn_league(platform, league_id, 2023)
 
         for game in league.box_scores(week):
 
@@ -69,27 +49,38 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
                         'name': player_data.name,
                         'status': player_data.injuryStatus,
                         'points': player_data.points,
-                        'projected': player_data.projected_points,
+                        'projected': lookup_projected(
+                            data.get('projections'),
+                            ' '.join(player_data.name.split(' ')[0:2]),
+                            translate_team('espn', 'fp', player_data.proTeam),
+                            player_data.position,
+                            scoring
+                        ),
                         'position': player_data.position,
-                        'slot': player_data.slot_position,
-                        'gametime': player_data.game_date.replace(tzinfo=CDT) + datetime.timedelta(hours=-5),
+                        'slot': player_data.slot_position.replace('/', ''),
                     }
 
+                    if player.get('projected') == 0 and player.get('status') == 'active':
+                        player['status'] = 'warning'
+
+                    try:
+                        player['gametime'] = player_data.game_date.replace(tzinfo=CDT) + datetime.timedelta(hours=-5)
+                    except AttributeError as e:
+                        player['gametime'] = NO_GAMETIME
+
                     if 'D/ST' not in player.get('name'):
-                        player['name'] = f"{player.get('name')[0]}. {' '.join(player.get('name').split(' ')[1:])}"
+                        player['name'] = f"{player.get('name')[0]}. {player.get('name').split(' ')[1]}"
 
                     if get_current_central_datetime() >= player.get('gametime'):
-                        if player_data.game_played == 100:
-                            player['play_status'] = 'played'
-                        else:
-                            player['play_status'] = 'playing'
+                        player['play_status'] = 'played' if player_data.game_played == 100 else 'playing'
+
                     else:
                         player['play_status'] = 'future'
 
                     players.append(player)
 
-                    if player_data.proTeam not in PRO_MATCHUPS.keys():
-                        PRO_MATCHUPS[player_data.proTeam] = (player.get('gametime'), player_data.game_played == 100)
+                    if player.get('gametime') != NO_GAMETIME:
+                        data['pro_matchups'][player_data.proTeam] = (player.get('gametime'), player_data.game_played == 100)
 
                 matchup.append(players)
             matchups.append(matchup)
@@ -133,29 +124,30 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
                     'name': player_data.get('full_name', f"{player_data.get('last_name')} D/ST"),
                     'status': player_data.get('injury_status', ''),
                     'points': team.get('starters_points')[i],
-                    'projected': -1,
+                    'projected': lookup_projected(
+                        data.get('projections'),
+                        ' '.join(player_data.get('full_name', f"{player_data.get('last_name')} D/ST").split(' ')[0:2]),
+                        translate_team('sleeper', 'fp', player_data.get('team')),
+                        player_data.get('fantasy_positions')[0],
+                        scoring
+                    ),
                     'position': player_data.get('fantasy_positions')[0],
                     'slot': player_data.get('fantasy_positions')[0],
                 }
 
+                if player.get('projected') == 0 and player.get('status') == None:
+                    player['status'] = 'warning'
+
                 if 'D/ST' not in player.get('name'):
                     player['name'] = f"{player.get('name')[0]}. {' '.join(player.get('name').split(' ')[1:])}"
 
-                gametime, gamedone = sleeper_gametime_lookup(player_data.get('team'))
+                gametime, gamedone = data.get('pro_matchups').get(translate_team('sleeper', 'espn', player_data.get('team')))
 
                 player['gametime'] = gametime
-
-                if get_current_central_datetime() >= gametime:
-                    if gamedone:
-                        player['play_status'] = 'played'
-                    else:
-                        player['play_status'] = 'playing'
-                else:
-                    player['play_status'] = 'future'
+                player['play_status'] = 'future' if get_current_central_datetime() < gametime else 'played' if gamedone else 'playing'
 
                 if player.get('position') == 'DEF':
-                    player['position'] = 'D/ST'
-                    player['slot'] = 'D/ST'
+                    player['position'] = player['slot'] = 'DST'
 
                 players.append(player)
             
@@ -170,35 +162,20 @@ def get_current_points(platform: str, league_id: int, week: int) -> list:
     return matchups
 
 
-def player_sort(item: dict) -> int:
-    sorting_order = {'QB': 1, 'D/ST': 3, 'K': 4, 'BE': 5, 'IR': 6}
-    return (sorting_order.get(item.get('position'), 2), -item.get('points'), item.get('gametime'), -item.get('projected'))
-
-
-def get_current_central_datetime() -> datetime.datetime:
-
-    now = datetime.datetime.utcnow().replace(tzinfo=CDT)
-
-    now += datetime.timedelta(hours=-5)
-
-    if now.month >= 11 and now.day >= 5:
-        now += datetime.timedelta(hours=-1)
-    
-    return now
-
-
 def organize_team(players: list) -> dict:
 
-    team = {'info': players[0], 'active': [], 'inactive': [], 'points': 0}
+    team = {'info': players[0], 'active': [], 'inactive': [], 'points': 0, 'projected': 0}
 
     for player in players[1:]:
 
         if player.get('play_status') != 'future':
             player['display_even'] = player['display_odd'] = player.get('points')
-        else:
+        elif player.get('gametime') != NO_GAMETIME:
             player['display_even'] = player.get('gametime') \
             .strftime("%a %I:%M").replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
             player['display_odd'] = ' '.join(reversed(player.get('display_even').split(' ')))
+        else:
+            player['display_even'] = player['display_odd'] = 'N/A'
 
         team['inactive' if player.get('slot') in ['BE', 'IR'] else 'active'].append(player)
 
@@ -207,8 +184,16 @@ def organize_team(players: list) -> dict:
 
     for player in team.get('active'):
         team['points'] += player.get('points')
+        team['projected'] += player.get('projected')
+    
+    team['projected'] = round(team.get('projected'), 2)
 
     return team
+
+
+@app.route("/", methods=['GET'])
+def index():
+    return ""
 
 
 @app.route("/<string:profile>", methods=['GET'])
@@ -221,6 +206,8 @@ def index_week(profile: str, week: int):
 
     profile = PROFILES.get(profile)
 
+    data = {'projections': get_all_projections(), 'pro_matchups': {}}
+
     if not profile:
         return f"Profile not found. Profiles: {', '.join(PROFILES.keys())}"
 
@@ -232,10 +219,11 @@ def index_week(profile: str, week: int):
 
         name = league_data[0]
         platform = league_data[1]
-        league_id = int(league_data[2])
-        team_id = int(league_data[3])
+        scoring = league_data[2]
+        league_id = int(league_data[3])
+        team_id = int(league_data[4])
 
-        matchup_db[league_id] = {'name': name, 'points': get_current_points(platform, league_id, week)}
+        matchup_db[league_id] = {'name': name, 'points': get_current_points(data, platform, league_id, scoring, week)}
         team_db[league_id] = team_id
 
     for league_id, league_matchups in matchup_db.items():
@@ -248,11 +236,6 @@ def index_week(profile: str, week: int):
                 break
 
     return render_template('leagues.html', matchups=matchups)
-
-
-@app.route("/", methods=['GET'])
-def index():
-    return ""
 
 
 if __name__ == '__main__':

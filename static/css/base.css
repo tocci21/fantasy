@@ -12,11 +12,17 @@
     .matchup {
         display: grid;
         grid-template-columns: 49% 2% 49%;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
     }
 
     .player {
         margin-bottom: 5px;
+    }
+
+    .refresh {
+        margin: auto;
+        width: 50%;
+        text-align: center;
     }
 }
 
@@ -27,18 +33,24 @@
     .matchup {
         display: grid;
         grid-template-columns: 47.5% 5% 47.5%;
-        margin-bottom: 20px;
+        margin-bottom: 10px;
         width: 30%;
     }
 
     .player {
         margin-bottom: 2px;
     }
+
+    .refresh {
+        width: 30%;
+        text-align: center;
+    }
 }
 
 body {
     background-color: black;
     color: white;
+    font-family: monospace;
 }
 
 .league-name {
@@ -51,12 +63,12 @@ body {
     display: grid;
 }
 
-.team-header.even {
-    grid-template-columns: 55% 20% 25%;
+.team-header.even, .player.even {
+    grid-template-columns: 50% 25% 25%;
 }
 
-.team-header.odd {
-    grid-template-columns: 25% 20% 55%;
+.team-header.odd, .player.odd {
+    grid-template-columns: 25% 25% 50%;
 }
 
 .team-name {
@@ -76,12 +88,16 @@ body {
     text-align: left;
 }
 
-.team-points {
+.team-points, .team-projected {
     display: grid;
     align-items: center;
     text-align: center;
     padding: 10px 5px 5px 5px;
     font-weight: bolder;
+}
+
+.team-points {
+    font-size: 1.2em;
 }
 
 .player-header {
@@ -96,14 +112,6 @@ body {
     border-radius: 25px;
 }
 
-.player.even {
-    grid-template-columns: 55% 20% 25%;
-}
-
-.player.odd {
-    grid-template-columns: 25% 20% 55%;
-}
-
 .player div {
     overflow-x: hidden;
     white-space: nowrap;
@@ -115,6 +123,14 @@ body {
 
 .player.future {
     border-color: #333;
+}
+
+.team-projected, .player.active .projected, .player.none .projected, .player.normal .projected {
+    color: #ddd;
+}
+
+.player.warning {
+    color: yellow !important;
 }
 
 .player.questionable {
@@ -160,8 +176,14 @@ body {
     background-color: black;
 }
 
-.refresh {
-    margin: auto;
-    width: 50%;
+a {
+    display: inline-block;
+    padding: 5px 10px;
+    font-weight: bold;
     text-align: center;
+    text-decoration: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #ffffff;
+    background: dimgray;
 }

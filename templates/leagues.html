@@ -14,11 +14,11 @@
                         <div class="team-header {{ class }}">
                             {% if class == "even" %}
                             <div class="team-name">{{ team.info.name|upper }}</div>
-                            <div class="team-projected">{{ team.info.projected }}</div>
+                            <div class="team-projected">({{ team.projected }})</div>
                             {% endif %}
                             <div class="team-points">{{ "%.02f"|format(team.points) }}</div>
                             {% if class == "odd" %}
-                            <div class="team-projected">{{ team.info.projected }}</div>
+                            <div class="team-projected">({{ team.projected }})</div>
                             <div class="team-name">{{ team.info.name|upper }}</div>
                             {% endif %}
                         </div>
@@ -28,7 +28,7 @@
                             <div class="player {{ class }} {{ player.play_status }} {{ player.status|lower }}">
                                 <div class="name">{{ player.name }}</div>
                                 {% if player.projected != -1 %}
-                                    <div class="projected">{% if player.projected < 10 %}&nbsp;{% endif %}{{ "%.02f"|format(player.projected) }}</div>
+                                    <div class="projected">{% if player.projected < 10 %}&nbsp;{% endif %}({{ "%.02f"|format(player.projected) }})</div>
                                 {% else %}
                                     <div class="projected"></div>
                                 {% endif %}
@@ -46,7 +46,7 @@
                                     <div class="points">{% if player.points < 10 %}&nbsp;{% endif %}{{ "%.02f"|format(player.points) }}</div>
                                 {% endif %}
                                 {% if player.projected != -1 %}
-                                    <div class="projected">{% if player.projected < 10 %}&nbsp;{% endif %}{{ "%.02f"|format(player.projected) }}</div>
+                                    <div class="projected">{% if player.projected < 10 %}&nbsp;{% endif %}({{ "%.02f"|format(player.projected) }})</div>
                                 {% else %}
                                     <div class="projected"></div>
                                 {% endif %}
