@@ -1,19 +1,19 @@
 import datetime
 import json
 import time
+import threading
 import os
 
 import requests
 from bs4 import BeautifulSoup
 from espn_api.football import League
+from espn_api.requests.espn_requests import ESPNAccessDenied
 
 from constants import CDT
 
 
-def initialize_espn_league(platform: str, league_id: int, year: int) -> League:
-
-    if platform == 'espn':
-        return League(league_id=league_id, year=year, espn_s2=os.environ.get('s2').replace(' ', ''), swid=os.environ.get('swid'))
+def initialize_espn_league(league_id: int, year: int) -> League:
+    return League(league_id=league_id, year=year, espn_s2=os.environ.get('s2').replace(' ', ''), swid=os.environ.get('swid'))
 
 
 def get_current_week():
@@ -37,9 +37,8 @@ def get_current_central_datetime() -> datetime.datetime:
 def player_sort(item: dict) -> tuple:
     sorting_order = {'QB': 1, 'DST': 3, 'D/ST': 3, 'K': 4, 'BE': 5, 'IR': 6}
     try:
-        return (sorting_order.get(item.get('position'), 2), -item.get('points'), item.get('gametime'), -item.get('projected'))
+        return (sorting_order.get(item.get('position'), 2), -item.get('points'), -item.get('projected'))
     except TypeError as e:
-        print(item)
         return (0, 0, 0, 0)
 
 
@@ -59,6 +58,8 @@ def translate_team(input: str, output: str, team_name: str) -> str:
 
 
 def get_all_projections() -> dict:
+
+    runtime = datetime.datetime.utcnow()
 
     projections = {}
 
@@ -100,3 +101,82 @@ def get_all_projections() -> dict:
                         projections[team][position][name][scoring] = float(projected)
 
     return projections
+
+
+def get_league_data(data: dict, league: tuple):
+
+    data[league[0]] = []
+    threads = []
+
+    if league[1] == 'espn':
+
+        for year in range(league[3], datetime.datetime.utcnow().year + 1):
+
+            thread = threading.Thread(target=get_league_year_data, args=(data, year, league))
+            thread.start()
+            threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+
+
+def get_league_year_data(data: dict, year: int, league: tuple):
+
+    threads = []
+    season = None
+
+    while not season:
+        try:
+            season = initialize_espn_league(league[2], year)
+        except ESPNAccessDenied:
+            time.sleep(0.5)
+
+
+    week = 1
+
+    for week in range(1, 15):
+        
+        thread = threading.Thread(target=get_league_week_data, args=(data, year, week, season, league))
+        thread.start()
+        threads.append(thread)
+
+    for thread in threads:
+        thread.join()
+
+
+def get_league_week_data(data: dict, year: int, week: int, season: League, league: tuple):
+
+    threads = []
+    matchup_data = None
+
+    while not matchup_data:
+        try:
+            matchup_data = season.box_scores(week)
+        except ESPNAccessDenied:
+            time.sleep(0.5)
+    
+    if not matchup_data or matchup_data[0].is_playoff:
+        return
+        
+    if year >= datetime.datetime.utcnow().year and week >= get_current_week():
+        return
+
+    matchup_id = 0
+
+    for matchup in matchup_data:
+
+        matchup_id += 1
+
+        for team in (
+            (matchup.home_team, matchup.home_score, matchup.home_projected),
+            (matchup.away_team, matchup.away_score, matchup.away_projected)
+        ):
+
+            if team[1] == 0:
+                continue
+
+            owner = "Redacted" if team[0].owner == "None" else team[0].owner
+
+            data[league[0]].append(
+                (year, week, matchup_id, owner, round(team[1], 2), round(team[2], 2), round(team[1] - team[2], 2))
+            )

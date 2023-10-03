@@ -2,6 +2,10 @@
 
 @media only screen and (max-device-width : 1024px)
 {
+    .records-container {
+        width: 100%;
+    }
+
     .matchups {
         padding: 5px;
         width: 100%;
@@ -30,6 +34,10 @@
 
 @media only screen and (min-width : 1025px)
 {
+    .records-container {
+        width: 30%;
+    }
+
     .matchup {
         display: grid;
         grid-template-columns: 47.5% 5% 47.5%;
@@ -42,21 +50,69 @@
     }
 
     .refresh {
-        width: 30%;
+        width: 20%;
         text-align: center;
     }
+}
+
+div.records, div.records-header {
+    display: grid;
+    grid-template-columns: 35% 15% 15% 15% 10% 10%;
+}
+
+div.records-header {
+    font-weight: bolder;
+}
+
+div.record-name {
+    text-align: center;
+    margin: 10px 0px;
+    color: goldenrod;
+}
+
+div.records-container div.league-name {
+    width: 100%;
+    text-align: center;
+    font-weight: bolder;
+    margin-top: 10px;
+}
+
+div.records div, div.records-header div {
+    padding: 2px 10px;
+}
+
+div.record-owner {
+    text-align: right;
+}
+
+div.record-points, div.record-projected, div.record-diff, div.record-year, div.record-week {
+    text-align: center;
+}
+
+div.records div.positive {
+    color: rgb(0, 90, 0);
+}
+
+div.records div.negative {
+    color: rgb(90, 0, 0);
+}
+
+div.recommended-pane {
+    display: none;
+    position: absolute;
+    background: black;
+    width: 15%;
+}
+
+.recommended-pane .recommended, .recommended-pane .bench {
+    grid-template-columns: 15% 85%;
+    display: grid;
 }
 
 body {
     background-color: black;
     color: white;
     font-family: monospace;
-}
-
-.league-name {
-    width: 100%;
-    text-align: center;
-    font-weight: bolder;
 }
 
 .team-header {

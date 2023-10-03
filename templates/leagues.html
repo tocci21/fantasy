@@ -23,7 +23,7 @@
                             {% endif %}
                         </div>
                         <div class="players {{ class }}">
-                        {% for player in team.get('active') %}
+                        {% for player in team.get('roster') %}
                         {% if class == "even" %}
                             <div class="player {{ class }} {{ player.play_status }} {{ player.status|lower }}">
                                 <div class="name">{{ player.name }}</div>
