@@ -1,22 +1,25 @@
 import datetime
 import json
-import requests
 import threading
 
-from constants import CDT, PROFILES, NO_GAMETIME
-import helpers
-
-from flask import Flask, request, render_template
+import pytz
+import requests
+from flask import Flask, render_template, request
 from google.cloud import secretmanager_v1
 from yaml import safe_load
 
+import helpers
+
+NO_GAMETIME = datetime.datetime(2000, 1, 1, tzinfo=pytz.timezone("America/Chicago"))
 
 app = Flask(__name__)
 
 
 def lookup_projected(projections: dict, name: str, team: str, position: str, scoring: str) -> float:
+    if position in ['D/ST', 'DEF']:
+        position = 'DST'
     try:
-        return projections.get(team).get(position).get(name).get(scoring)
+        return projections.get(team, 0).get(position, 0).get(name, 0).get(scoring, 0)
     except (AttributeError, KeyError):
         return 0
 
@@ -54,11 +57,11 @@ def get_current_points(data: dict, platform: str, league_id: int, scoring: str, 
                         'slot': player_data.slot_position.replace('/', ''),
                     }
 
-                    if player.get('projected') == 0 and player.get('status') == 'active':
+                    if player.get('projected') == 0 and player.get('status') in ['active', 'normal']:
                         player['status'] = 'warning'
 
                     try:
-                        player['gametime'] = player_data.game_date.replace(tzinfo=CDT) + datetime.timedelta(hours=-5)
+                        player['gametime'] = player_data.game_date.astimezone(pytz.timezone('America/Chicago'))
                     except AttributeError as e:
                         player['gametime'] = NO_GAMETIME
 
@@ -125,8 +128,8 @@ def get_current_points(data: dict, platform: str, league_id: int, scoring: str, 
                         player_data.get('fantasy_positions')[0],
                         scoring
                     ),
-                    'position': player_data.get('fantasy_positions')[0],
-                    'slot': player_data.get('fantasy_positions')[0] if i in team.get('starters') else 'BE',
+                    'position': player_data.get('fantasy_positions')[0].replace('DEF', 'DST'),
+                    'slot': player_data.get('fantasy_positions')[0].replace('DEF', 'DST') if i in team.get('starters') else 'BE',
                 }
 
                 if player.get('projected') == 0 and player.get('status') == None:
@@ -179,7 +182,7 @@ def organize_team(players: list, mode: str = 'default') -> dict:
     for key in ['active', 'inactive']:
         team[key] = sorted(team.get(key), key=helpers.player_sort)
 
-    ordered_players = sorted(players[1:], key=lambda x: x.get('projected'), reverse=True)
+    ordered_players = sorted(players[1:], key=lambda x: x.get('projected', 0), reverse=True)
 
     if mode == 'max':
 
@@ -229,10 +232,21 @@ def records():
     records = {}
     data = {}
 
-    for profile in PROFILES.values():
-        for league in profile:
-            if (league[0], league[1], league[3], league[5]) not in leagues:
-                leagues.append((league[0], league[1], league[3], league[5]))
+    profiles = helpers.load_profiles()
+
+    for league_list in profiles.values():
+        
+        for league in league_list:
+
+            league_data = {
+                'name': league.get('name'),
+                'id': league.get('league_id'),
+                'platform': league.get('platform'),
+                'start': league.get('start_year')
+            }
+            
+            if league_data not in leagues:
+                leagues.append(league_data)
 
     threads = []
 
@@ -270,7 +284,8 @@ def index():
 @app.route("/<string:profile>/", methods=['GET'])
 def index_week(profile: str):
 
-    profile = PROFILES.get(profile)
+    profiles = helpers.load_profiles()
+    profile = profiles.get(profile)
 
     week = request.args.get('week') if 'week' in request.args.keys() else helpers.get_current_week()
     mode = request.args.get('mode') if 'mode' in request.args.keys() else 'default'
@@ -278,22 +293,20 @@ def index_week(profile: str):
     data = {'projections': helpers.get_all_projections(), 'pro_matchups': {}}
 
     if not profile:
-        return f"Profile not found. Profiles: {', '.join(PROFILES.keys())}"
+        return f"Profile not found. Profiles: {', '.join(profiles.keys())}"
 
     matchup_db = {}
     team_db = {}
     matchups = []
 
-    for league_data in profile:
+    for league in profile:
 
-        name = league_data[0]
-        platform = league_data[1]
-        scoring = league_data[2]
-        league_id = int(league_data[3])
-        team_id = int(league_data[4])
+        matchup_db[league.get('league_id')] = {
+            'name': league.get('name'),
+            'points': get_current_points(data, league.get('platform'), league.get('league_id'), league.get('scoring'), week)
+        }
 
-        matchup_db[league_id] = {'name': name, 'points': get_current_points(data, platform, league_id, scoring, week)}
-        team_db[league_id] = team_id
+        team_db[league.get('league_id')] = league.get('team_id')
 
     for league_id, league_matchups in matchup_db.items():
         for matchup in league_matchups.get('points'):

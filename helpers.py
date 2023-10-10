@@ -1,45 +1,82 @@
 import datetime
 import json
-import time
-import threading
 import os
+import threading
+import time
 
+import pytz
 import requests
 from bs4 import BeautifulSoup
 from espn_api.football import League
 from espn_api.requests.espn_requests import ESPNAccessDenied
+from google.cloud import bigquery
 
-from constants import CDT
+
+def initialize_bigquery_client():
+    """ Initialize BQ client with local or implied credentials """
+
+    if not os.path.exists('google.json'):
+        return bigquery.Client()
+
+    credentials = service_account.Credentials.from_service_account_file(
+        'google.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
+
+    return bigquery.Client(credentials=credentials)
+
+
+def load_profiles() -> dict:
+
+    profiles = {}
+    bq = bigquery.Client()
+
+    for league in [league for league in bq.query(f"SELECT * FROM `commander.leagues`").result()]:
+
+        if league.profile not in profiles.keys():
+            profiles[league.profile] = []
+
+        profiles[league.profile].append({
+            'name': league.name,
+            'platform': league.platform,
+            'scoring': league.scoring,
+            'league_id': league.league_id,
+            'team_id': league.team_id,
+            'start_year': league.start_year,
+            'swid': league.swid,
+            's2': league.s2,
+        })
+    
+    return profiles
 
 
 def initialize_espn_league(league_id: int, year: int) -> League:
-    return League(league_id=league_id, year=year, espn_s2=os.environ.get('s2').replace(' ', ''), swid=os.environ.get('swid'))
+
+    s2 = swid = None
+    profiles = load_profiles()
+
+    for profile, leagues in profiles.items():
+        for league in leagues:
+            if league.get('league_id') == league_id:
+                s2, swid = league.get('s2'), league.get('swid')
+
+    return League(league_id=league_id, year=year, espn_s2=s2, swid=swid)
 
 
 def get_current_week():
-    season_start = datetime.datetime(2023, 9, 5, tzinfo=CDT)
+    season_start = datetime.datetime(2023, 9, 5, tzinfo=pytz.timezone("America/Chicago"))
     delta = get_current_central_datetime() - season_start
     return int(delta.days / 7) + 1
 
 
 def get_current_central_datetime() -> datetime.datetime:
-
-    now = datetime.datetime.utcnow().replace(tzinfo=CDT)
-
-    now += datetime.timedelta(hours=-5)
-
-    if now.month >= 11 and now.day >= 5:
-        now += datetime.timedelta(hours=-1)
-    
-    return now
+    return datetime.datetime.now(pytz.timezone('America/Chicago'))
 
 
 def player_sort(item: dict) -> tuple:
-    sorting_order = {'QB': 1, 'DST': 3, 'D/ST': 3, 'K': 4, 'BE': 5, 'IR': 6}
+    sorting_order = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 4, 'DST': 5, 'K': 6, 'BE': 10, 'IR': 11}
     try:
-        return (sorting_order.get(item.get('position'), 2), -item.get('points'), -item.get('projected'))
+        return sorting_order.get(item.get('position'), 2)
     except TypeError as e:
-        return (0, 0, 0, 0)
+        return 0
 
 
 def translate_team(input: str, output: str, team_name: str) -> str:
@@ -103,14 +140,14 @@ def get_all_projections() -> dict:
     return projections
 
 
-def get_league_data(data: dict, league: tuple):
+def get_league_data(data: dict, league: dict):
 
-    data[league[0]] = []
+    data[league.get('name')] = []
     threads = []
 
-    if league[1] == 'espn':
+    if league.get('platform') == 'espn':
 
-        for year in range(league[3], datetime.datetime.utcnow().year + 1):
+        for year in range(league.get('start'), datetime.datetime.utcnow().year + 1):
 
             thread = threading.Thread(target=get_league_year_data, args=(data, year, league))
             thread.start()
@@ -120,14 +157,14 @@ def get_league_data(data: dict, league: tuple):
         thread.join()
 
 
-def get_league_year_data(data: dict, year: int, league: tuple):
+def get_league_year_data(data: dict, year: int, league: dict):
 
     threads = []
     season = None
 
     while not season:
         try:
-            season = initialize_espn_league(league[2], year)
+            season = initialize_espn_league(league.get('id'), year)
         except ESPNAccessDenied:
             time.sleep(0.5)
 
@@ -144,7 +181,7 @@ def get_league_year_data(data: dict, year: int, league: tuple):
         thread.join()
 
 
-def get_league_week_data(data: dict, year: int, week: int, season: League, league: tuple):
+def get_league_week_data(data: dict, year: int, week: int, season: League, league: dict):
 
     threads = []
     matchup_data = None
@@ -177,6 +214,6 @@ def get_league_week_data(data: dict, year: int, week: int, season: League, leagu
 
             owner = "Redacted" if team[0].owner == "None" else team[0].owner
 
-            data[league[0]].append(
+            data[league.get('name')].append(
                 (year, week, matchup_id, owner, round(team[1], 2), round(team[2], 2), round(team[1] - team[2], 2))
             )
