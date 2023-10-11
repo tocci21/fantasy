@@ -94,7 +94,7 @@ def translate_team(input: str, output: str, team_name: str) -> str:
     return team_name
 
 
-def get_all_projections() -> dict:
+def get_all_projections(week: int) -> dict:
 
     runtime = datetime.datetime.utcnow()
 
@@ -104,9 +104,9 @@ def get_all_projections() -> dict:
         for scoring in ['half-point-ppr', 'ppr']:
         
             if position_name in ['qb', 'k', 'dst']:
-                url = f"https://www.fantasypros.com/nfl/rankings/{position_name}.php"
+                url = f"https://www.fantasypros.com/nfl/rankings/{position_name}.php?week={week}"
             else:
-                url = f"https://www.fantasypros.com/nfl/rankings/{scoring}-{position_name}.php"
+                url = f"https://www.fantasypros.com/nfl/rankings/{scoring}-{position_name}.php?week={week}"
 
             for line in BeautifulSoup(requests.get(url).text, 'html.parser').find_all('script'):
                 if 'ecrData' in line.text:

@@ -287,10 +287,10 @@ def index_week(profile: str):
     profiles = helpers.load_profiles()
     profile = profiles.get(profile)
 
-    week = request.args.get('week') if 'week' in request.args.keys() else helpers.get_current_week()
+    week = int(request.args.get('week')) if 'week' in request.args.keys() else helpers.get_current_week()
     mode = request.args.get('mode') if 'mode' in request.args.keys() else 'default'
 
-    data = {'projections': helpers.get_all_projections(), 'pro_matchups': {}}
+    data = {'projections': helpers.get_all_projections(week), 'pro_matchups': {}}
 
     if not profile:
         return f"Profile not found. Profiles: {', '.join(profiles.keys())}"
@@ -316,8 +316,8 @@ def index_week(profile: str):
             if matchup[1][0].get('id') == team_db.get(league_id):
                 matchups.append((league_matchups.get('name'), organize_team(matchup[1], mode), organize_team(matchup[0], mode)))
                 break
-
-    return render_template('leagues.html', matchups=matchups)
+    
+    return render_template('leagues.html', matchups=matchups, week=week)
 
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@
         width: 100%;
     }
 
-    .matchups {
+    .matchups, .buttons {
         padding: 5px;
         width: 100%;
         max-width: 95%;
@@ -38,6 +38,12 @@
         width: 30%;
     }
 
+    .buttons-container {
+        width: 25%;
+        padding-left: 50px;
+        padding-right: 30px;
+    }
+
     .matchup {
         display: grid;
         grid-template-columns: 47.5% 5% 47.5%;
@@ -53,6 +59,28 @@
         width: 20%;
         text-align: center;
     }
+}
+
+div.buttons {
+    display: grid;
+    grid-template-columns: 20% 20% 20% 40%;
+}
+
+div.buttons div {
+    text-align: center;
+    padding: 10px;
+}
+
+a {
+    display: inline-block;
+    padding: 5px 10px;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #ffffff;
+    background: dimgray;
 }
 
 div.records, div.records-header {
@@ -231,16 +259,4 @@ body {
 
 .player.future {
     background-color: black;
-}
-
-a {
-    display: inline-block;
-    padding: 5px 10px;
-    font-weight: bold;
-    text-align: center;
-    text-decoration: none;
-    border-radius: 5px;
-    cursor: pointer;
-    color: #ffffff;
-    background: dimgray;
 }
