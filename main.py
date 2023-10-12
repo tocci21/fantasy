@@ -186,7 +186,7 @@ def organize_team(players: list, mode: str = 'default') -> dict:
 
     if mode == 'max':
 
-        for position in ['QB', 'RB', 'WR', 'FLEX', 'TE', 'DST', 'K']:
+        for position in ['QB', 'RB', 'WR', 'TE', 'FLEX', 'DST', 'K']:
             if position != 'FLEX':
                 team['roster'].append((position, [p for p in ordered_players if p.get('position') == position][0]))
 
