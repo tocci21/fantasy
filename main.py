@@ -7,10 +7,15 @@ import requests
 from flask import Flask, render_template, request
 from google.cloud import secretmanager_v1
 from yaml import safe_load
+from google.cloud import bigquery
 
 import helpers
 
 NO_GAMETIME = datetime.datetime(2000, 1, 1, tzinfo=pytz.timezone("America/Chicago"))
+TABLE_NAMES = {
+    'projections': 'commander.projections',
+    'scores': 'commander.scores',
+}
 
 app = Flask(__name__)
 
@@ -57,7 +62,7 @@ def get_current_points(data: dict, platform: str, league_id: int, scoring: str, 
                         'slot': player_data.slot_position.replace('/', ''),
                     }
 
-                    if player.get('projected') == 0 and player.get('status') in ['active', 'normal']:
+                    if player.get('projected') == 0 and player.get('status') == 'ACTIVE':
                         player['status'] = 'warning'
 
                     try:
@@ -68,7 +73,9 @@ def get_current_points(data: dict, platform: str, league_id: int, scoring: str, 
                     if 'D/ST' not in player.get('name'):
                         player['name'] = f"{player.get('name')[0]}. {player.get('name').split(' ')[1]}"
 
-                    if helpers.get_current_central_datetime() >= player.get('gametime'):
+                    if player.get('gametime') == NO_GAMETIME:
+                        player['play_status'] = 'future'
+                    elif helpers.get_current_central_datetime() >= player.get('gametime'):
                         player['play_status'] = 'played' if player_data.game_played == 100 else 'playing'
 
                     else:
@@ -169,13 +176,13 @@ def organize_team(players: list, mode: str = 'default') -> dict:
             player['display_even'] = player['display_odd'] = player.get('points')
         elif player.get('gametime') != NO_GAMETIME:
             if not player.get('gametime'):
-                player['display_even'] = 'n/a'
+                player['display_even'] = 'BYE'
             else:
                 player['display_even'] = player.get('gametime') \
                 .strftime("%a %I:%M").replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
             player['display_odd'] = ' '.join(reversed(player.get('display_even').split(' ')))
         else:
-            player['display_even'] = player['display_odd'] = 'N/A'
+            player['display_even'] = player['display_odd'] = 'BYE'
 
         team['inactive' if player.get('slot') in ['BE', 'IR'] else 'active'].append(player)
 
@@ -223,6 +230,94 @@ def organize_team(players: list, mode: str = 'default') -> dict:
     team['projected'] = round(team.get('projected'), 2)
 
     return team
+
+
+@app.route("/update/projections", methods=['GET'])
+def update_projections():
+
+    runtime = helpers.get_current_central_datetime().strftime('%Y-%m-%d %H:%M:%S')
+    week = helpers.get_current_week()
+    rows = []
+    
+    table = helpers.TABLES.get('projections')
+
+    projections = helpers.get_all_projections(week)
+
+    for team, team_data in projections.items():
+        for position in team_data.values():
+            for player, scoring in position.items():
+                row = {
+                    'player': player,
+                    'team': team,
+                    'week': week,
+                    'standard': 0,
+                    'half-point-ppr': scoring.get('half-point-ppr', 0),
+                    'ppr': scoring.get('ppr', 0),
+                    'updated': runtime,
+                }
+                rows.append(row)
+
+    bq = helpers.initialize_bigquery_client()
+
+    schema = [
+        {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "team",            "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "week",            "type": "INTEGER",  "mode": "REQUIRED"},
+        {"name": "standard",        "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "half-point-ppr",  "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "ppr",             "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
+    ]
+
+    job_config = bigquery.LoadJobConfig(schema=schema, source_format='NEWLINE_DELIMITED_JSON')
+    job = bq.load_table_from_json(rows, table, job_config=job_config)
+    job.result()
+
+    bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}'").result()
+
+
+@app.route("/update/scores", methods=['GET'])
+def update_scores():
+
+    runtime = helpers.get_current_central_datetime().strftime('%Y-%m-%d %H:%M:%S')
+    week = helpers.get_current_week()
+    rows = []
+    
+    table = helpers.TABLES.get('scores')
+
+    scores = helpers.get_all_scores(week)
+
+    for team, team_data in projections.items():
+        for position in team_data.values():
+            for player, scoring in position.items():
+                row = {
+                    'player': player,
+                    'team': team,
+                    'week': week,
+                    'standard': 0,
+                    'half-point-ppr': scoring.get('half-point-ppr', 0),
+                    'ppr': scoring.get('ppr', 0),
+                    'updated': runtime,
+                }
+                rows.append(row)
+
+    bq = helpers.initialize_bigquery_client()
+
+    schema = [
+        {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "team",            "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "week",            "type": "INTEGER",  "mode": "REQUIRED"},
+        {"name": "standard",        "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "half-point-ppr",  "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "ppr",             "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
+    ]
+
+    job_config = bigquery.LoadJobConfig(schema=schema, source_format='NEWLINE_DELIMITED_JSON')
+    job = bq.load_table_from_json(rows, table, job_config=job_config)
+    job.result()
+
+    bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}'").result()
 
 
 @app.route("/records", methods=['GET'])

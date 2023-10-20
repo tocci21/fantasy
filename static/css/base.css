@@ -222,7 +222,7 @@ body {
     color: darkorange !important;
 }
 
-.player.injured_reserved, .player.out, .player.doubtful {
+.player.injury_reserve, .player.ir, .player.out, .player.doubtful {
     color: #d00 !important;
 }
 

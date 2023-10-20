@@ -12,6 +12,13 @@ from espn_api.requests.espn_requests import ESPNAccessDenied
 from google.cloud import bigquery
 
 
+TABLES = {
+    'leagues': 'commander.leagues',
+    'projections': 'commander.projections',
+    'scores': 'commander.scores',
+}
+
+
 def initialize_bigquery_client():
     """ Initialize BQ client with local or implied credentials """
 
@@ -29,7 +36,7 @@ def load_profiles() -> dict:
     profiles = {}
     bq = bigquery.Client()
 
-    for league in [league for league in bq.query(f"SELECT * FROM `commander.leagues`").result()]:
+    for league in [league for league in bq.query(f"SELECT * FROM `{TABLES.get('leagues')}`").result()]:
 
         if league.profile not in profiles.keys():
             profiles[league.profile] = []
@@ -102,7 +109,7 @@ def get_all_projections(week: int) -> dict:
 
     for position_name in ['qb', 'rb', 'wr', 'te', 'k', 'dst']:
         for scoring in ['half-point-ppr', 'ppr']:
-        
+
             if position_name in ['qb', 'k', 'dst']:
                 url = f"https://www.fantasypros.com/nfl/rankings/{position_name}.php?week={week}"
             else:
