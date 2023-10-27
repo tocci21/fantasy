@@ -273,7 +273,9 @@ def update_projections():
     job = bq.load_table_from_json(rows, table, job_config=job_config)
     job.result()
 
-    bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}'").result()
+    bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}' AND week = {week}").result()
+
+    return "Projections updated"
 
 
 @app.route("/update/scores", methods=['GET'])
