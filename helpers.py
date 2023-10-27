@@ -36,7 +36,7 @@ def load_profiles() -> dict:
     profiles = {}
     bq = bigquery.Client()
 
-    for league in [league for league in bq.query(f"SELECT * FROM `{TABLES.get('leagues')}`").result()]:
+    for league in [league for league in bq.query(f"SELECT * FROM `{TABLES.get('leagues')}` ORDER BY platform").result()]:
 
         if league.profile not in profiles.keys():
             profiles[league.profile] = []
