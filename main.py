@@ -43,7 +43,7 @@ def get_current_points(data: dict, platform: str, league_id: int, scoring: str, 
 
             for team_data, team_roster in ((game.home_team, game.home_lineup), (game.away_team, game.away_lineup)):
 
-                players = [{'id': team_data.team_id, 'name': team_data.owner.split(' ')[0].strip(), 'platform': 'espn'}]
+                players = [{'id': team_data.team_id, 'name': team_data.team_name, 'platform': 'espn'}]
 
                 for player_data in team_roster:
 
