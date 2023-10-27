@@ -4,7 +4,7 @@ import threading
 
 import pytz
 import requests
-from flask import Flask, render_template, request
+from flask import Flask, Response, render_template, request
 from google.cloud import secretmanager_v1
 from yaml import safe_load
 from google.cloud import bigquery
@@ -275,7 +275,7 @@ def update_projections():
 
     bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}' AND week = {week}").result()
 
-    return "Projections updated"
+    return Response('Projections updated', status=200)
 
 
 @app.route("/update/scores", methods=['GET'])
