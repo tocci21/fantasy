@@ -1,18 +1,16 @@
 import datetime
-import json
 import threading
 
 import pytz
 import requests
 from flask import Flask, render_template, request
-from google.cloud import secretmanager_v1
-from yaml import safe_load
 from google.cloud import bigquery
 
 import helpers
 
 NO_GAMETIME = datetime.datetime(2000, 1, 1, tzinfo=pytz.timezone("America/Chicago"))
 TABLE_NAMES = {
+    'teams': 'commander.teams',
     'projections': 'commander.projections',
     'scores': 'commander.scores',
 }
@@ -232,7 +230,14 @@ def organize_team(players: list, mode: str = 'default') -> dict:
     return team
 
 
-@app.route("/update/projections", methods=['GET'])
+@app.route("/update/all", methods=['GET'])
+def update_all():
+    """ Update all but live scores """
+
+    update_projections()
+    update_teams()
+
+
 def update_projections():
 
     runtime = helpers.get_current_central_datetime().strftime('%Y-%m-%d %H:%M:%S')
@@ -257,8 +262,6 @@ def update_projections():
                 }
                 rows.append(row)
 
-    bq = helpers.initialize_bigquery_client()
-
     schema = [
         {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
         {"name": "team",            "type": "STRING",   "mode": "REQUIRED"},
@@ -269,11 +272,52 @@ def update_projections():
         {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
     ]
 
-    job_config = bigquery.LoadJobConfig(schema=schema, source_format='NEWLINE_DELIMITED_JSON')
-    job = bq.load_table_from_json(rows, table, job_config=job_config)
-    job.result()
+    helpers.write_to_bigquery(table, schema, rows)
+    helpers.run_query(f"DELETE FROM `{table}` WHERE updated < '{runtime}'")
 
-    bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}'").result()
+
+def update_teams():
+
+    leagues = []
+    rows = []
+
+    for profile in helpers.load_profiles().values():
+        for league in profile:
+            del league['team_id']
+            if league.get('platform') == 'espn':
+                if league.get('league_id') not in [l.get('league_id') for l in leagues]:
+                    leagues.append(league)
+
+    for league in leagues:
+
+        url = f"https://fantasy.espn.com/apis/v3/games/ffl/seasons/2023/segments/0/leagues/{league.get('league_id')}?view=mTeam"
+
+        data = requests.get(url, cookies={'espn_s2': league.get('s2'), 'swid': league.get('swid')}).json()
+
+        owner_map = {}
+
+        for member in data.get('members'):
+            owner_map[member.get('id')] = f"{member.get('firstName')} {member.get('lastName')}"
+
+        for team in data.get('teams'):
+            rows.append({
+                'league_id': league.get('league_id'),
+                'team_id': team.get('id'),
+                'team': helpers.cleanup(team.get('name', 'None')),
+                'owner': helpers.cleanup(owner_map.get(team.get('owners', ['None'])[0], 'None')),
+            })
+
+        table = TABLE_NAMES.get('teams')
+
+        schema = [
+            {"name": "league_id", "type": "INTEGER", "mode": "REQUIRED"},
+            {"name": "team_id",   "type": "INTEGER", "mode": "REQUIRED"},
+            {"name": "team",      "type": "STRING",  "mode": "REQUIRED"},
+            {"name": "owner",     "type": "STRING",  "mode": "REQUIRED"},
+        ]
+
+        helpers.run_query(f"TRUNCATE TABLE {table}")
+        helpers.write_to_bigquery(table, schema, rows)
 
 
 @app.route("/update/scores", methods=['GET'])

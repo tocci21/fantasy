@@ -1,6 +1,5 @@
 import datetime
 import json
-import os
 import threading
 import time
 
@@ -20,15 +19,22 @@ TABLES = {
 
 
 def initialize_bigquery_client():
-    """ Initialize BQ client with local or implied credentials """
+    return bigquery.Client()
 
-    if not os.path.exists('google.json'):
-        return bigquery.Client()
 
-    credentials = service_account.Credentials.from_service_account_file(
-        'google.json', scopes=["https://www.googleapis.com/auth/cloud-platform"])
+def run_query(query: str):
 
-    return bigquery.Client(credentials=credentials)
+    bq = bigquery.Client()
+    bq.query(query)
+
+
+def write_to_bigquery(table: str, schema: list, rows: list):
+
+    bq = bigquery.Client()
+
+    job_config = bigquery.LoadJobConfig(schema=schema, source_format='NEWLINE_DELIMITED_JSON')
+    job = bq.load_table_from_json(rows, table, job_config=job_config)
+    job.result()
 
 
 def load_profiles() -> dict:
@@ -36,7 +42,7 @@ def load_profiles() -> dict:
     profiles = {}
     bq = bigquery.Client()
 
-    for league in [league for league in bq.query(f"SELECT * FROM `{TABLES.get('leagues')}`").result()]:
+    for league in [league for league in bq.query(f"SELECT * FROM `{TABLES.get('leagues')}` ORDER BY platform").result()]:
 
         if league.profile not in profiles.keys():
             profiles[league.profile] = []
@@ -224,3 +230,7 @@ def get_league_week_data(data: dict, year: int, week: int, season: League, leagu
             data[league.get('name')].append(
                 (year, week, matchup_id, owner, round(team[1], 2), round(team[2], 2), round(team[1] - team[2], 2))
             )
+
+
+def cleanup(text: str) -> str:
+    return ' '.join(c.capitalize() for c in text.split()).strip().replace('  ', ' ')
