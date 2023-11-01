@@ -26,9 +26,6 @@ def lookup_projected(projections: dict, name: str, team: str, position: str, sco
         return 0
 
 
-# def get_current_points(data: dict, platform: str, league_id: int, scoring: str, week: int) -> list:
-
-
 def organize_team(players: list, mode: str = 'default') -> dict:
 
     team = {'info': players[0], 'roster': [], 'active': [], 'inactive': [], 'points': 0, 'projected': 0}
