@@ -11,10 +11,13 @@ from espn_api.requests.espn_requests import ESPNAccessDenied
 from google.cloud import bigquery
 
 
+NO_GAMETIME = datetime.datetime(2000, 1, 1, tzinfo=pytz.timezone("America/Chicago"))
 TABLES = {
     'leagues': 'commander.leagues',
+    'teams': 'commander.teams',
     'projections': 'commander.projections',
     'scores': 'commander.scores',
+    'matchups': 'commander.matchups',
 }
 
 
@@ -22,10 +25,11 @@ def initialize_bigquery_client():
     return bigquery.Client()
 
 
-def run_query(query: str):
-
-    bq = bigquery.Client()
-    bq.query(query)
+def run_query(query: str, as_list: bool = False):
+    if not as_list:
+        return bigquery.Client().query(query).result()
+    else:
+        return [row for row in bigquery.Client().query(query).result()]
 
 
 def write_to_bigquery(table: str, schema: list, rows: list):
@@ -33,8 +37,7 @@ def write_to_bigquery(table: str, schema: list, rows: list):
     bq = bigquery.Client()
 
     job_config = bigquery.LoadJobConfig(schema=schema, source_format='NEWLINE_DELIMITED_JSON')
-    job = bq.load_table_from_json(rows, table, job_config=job_config)
-    job.result()
+    bq.load_table_from_json(rows, table, job_config=job_config).result()
 
 
 def load_profiles() -> dict:
@@ -107,7 +110,7 @@ def translate_team(input: str, output: str, team_name: str) -> str:
     return team_name
 
 
-def get_all_projections(week: int) -> dict:
+def get_all_projections(week: int = get_current_week()) -> dict:
 
     runtime = datetime.datetime.utcnow()
 
@@ -151,6 +154,161 @@ def get_all_projections(week: int) -> dict:
                         projections[team][position][name][scoring] = float(projected)
 
     return projections
+
+
+def get_all_scores(week: int) -> dict:
+
+    now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    leagues = []
+    matchups = []
+    gametimes = {}
+    responses = []
+
+    schemas = {
+        'scores': [
+            {"name": "league_id",   "type": "INTEGER",  "mode": "REQUIRED"},
+            {"name": "team_id",     "type": "INTEGER",  "mode": "REQUIRED"},
+            {"name": "week",        "type": "INTEGER",  "mode": "REQUIRED"},
+            {"name": "name",        "type": "STRING",   "mode": "REQUIRED"},
+            {"name": "team",        "type": "STRING",   "mode": "REQUIRED"},
+            {"name": "status",      "type": "STRING",   "mode": "REQUIRED"},
+            {"name": "position",    "type": "STRING",   "mode": "REQUIRED"},
+            {"name": "slot",        "type": "STRING",   "mode": "REQUIRED"},
+            {"name": "points",      "type": "FLOAT",    "mode": "REQUIRED"},
+            {"name": "play_status", "type": "STRING",   "mode": "REQUIRED"},
+            {"name": "gametime",    "type": "DATETIME", "mode": "REQUIRED"},
+            {"name": "updated",     "type": "DATETIME", "mode": "REQUIRED"},
+        ],
+        'matchups': [
+            {"name": "league_id",   "type": "INTEGER",  "mode": "REQUIRED"},
+            {"name": "week",        "type": "INTEGER",  "mode": "REQUIRED"},
+            {"name": "home",        "type": "INTEGER",  "mode": "REQUIRED"},
+            {"name": "away",        "type": "INTEGER",  "mode": "REQUIRED"},
+        ],
+    }
+
+    for profile in load_profiles().values():
+        for league in profile:
+            if (league.get('platform'), league.get('league_id')) not in leagues:
+                leagues.append((league.get('platform'), league.get('league_id')))
+
+    for league in leagues:
+
+        platform = league[0]
+        league_id = league[1]
+
+        players = []
+
+        if platform == 'espn':
+
+            league = initialize_espn_league(league_id, 2023)
+
+            for game in league.box_scores(week):
+
+                matchups.append({'league_id': league_id, 'week': week, 'home': game.home_team.team_id, 'away': game.away_team.team_id})
+                matchups.append({'league_id': league_id, 'week': week, 'home': game.away_team.team_id, 'away': game.home_team.team_id})
+                
+                for team_data, team_roster in ((game.home_team, game.home_lineup), (game.away_team, game.away_lineup)):
+                    for player_data in team_roster:
+
+                        player = {
+                            'league_id': league_id,
+                            'week': week,
+                            'team_id': team_data.team_id,
+                            'name': player_data.name,
+                            'team': player_data.proTeam,
+                            'status': player_data.injuryStatus,
+                            'position': player_data.position.replace('/', ''),
+                            'slot': player_data.slot_position.replace('/', '').replace('RBWRTE', 'FLEX'),
+                            'points': player_data.points,
+                        }
+
+                        if player.get('status') == 'NORMAL':
+                            player['status'] = 'ACTIVE'
+
+                        if player.get('projected') == 0 and player.get('status') == 'ACTIVE':
+                            player['status'] = 'warning'
+
+                        try:
+                            player['gametime'] = player_data.game_date.astimezone(pytz.timezone('America/Chicago'))
+                            if get_current_central_datetime() >= player.get('gametime'):
+                                player['play_status'] = 'played' if player_data.game_played == 100 else 'playing'
+                            else:
+                                player['play_status'] = 'future'
+                        except AttributeError as e:
+                            player['gametime'] = NO_GAMETIME
+                            player['play_status'] = 'future'
+
+                        if player.get('gametime') != NO_GAMETIME and player_data.proTeam not in gametimes.keys():
+                            gametimes[player_data.proTeam] = (player.get('gametime'), player_data.game_played == 100)
+
+                        player['gametime'] = player.get('gametime').strftime('%Y-%m-%d %H:%M:%S')
+                        player['updated'] = now
+
+                        players.append(player)
+
+        if platform == 'sleeper':
+
+            all_players = requests.get('https://api.sleeper.app/v1/players/nfl').json()
+
+            count = 0
+
+            matchup = []
+            players = []
+
+            for team in sorted(
+                requests.get(f'https://api.sleeper.app/v1/league/{league_id}/matchups/{week}').json(),
+                key=lambda x: x.get('matchup_id')):
+
+                for i in team.get('players'):
+
+                    player_data = all_players.get(i)
+
+                    if not player_data:
+                        continue
+
+                    player = {
+                        'league_id': league_id,
+                        'week': week,
+                        'team_id': team.get('roster_id'),
+                        'name': player_data.get('full_name', f"{player_data.get('last_name')} D/ST"),
+                        'team': translate_team('sleeper', 'espn', player_data.get('team')),
+                        'status': player_data.get('injury_status'),
+                        'position': player_data.get('fantasy_positions')[0].replace('DEF', 'DST'),
+                        'slot': player_data.get('fantasy_positions')[0].replace('DEF', 'DST') if i in team.get('starters') else 'BE',
+                        'points': team.get('players_points').get(i),
+                    }
+
+                    if player.get('status') == None:
+                        player['status'] = 'ACTIVE'
+
+                    if player.get('projected') == 0 and player.get('status') == 'ACTIVE':
+                        player['status'] = 'warning'
+
+                    gametime, gamedone = gametimes.get(translate_team('sleeper', 'espn', player_data.get('team')), (None, None))
+
+                    player['gametime'] = gametime if gametime else NO_GAMETIME
+                    player['play_status'] = 'future' if not gametime or get_current_central_datetime() < gametime else 'played' if gamedone else 'playing'
+
+                    player['gametime'] = player.get('gametime').strftime('%Y-%m-%d %H:%M:%S')
+                    player['updated'] = now
+
+                    players.append(player)
+                
+                matchup.append(team.get('roster_id'))
+
+                count += 1
+
+                if not count % 2:
+                    matchups.append({'league_id': league_id, 'week': week, 'home': matchup[0], 'away': matchup[1]})
+                    matchups.append({'league_id': league_id, 'week': week, 'home': matchup[1], 'away': matchup[0]})
+                    matchup = []
+        
+        write_to_bigquery(TABLES.get('scores'), schemas.get('scores'), players)
+        run_query(f"DELETE FROM `{TABLES.get('scores')}` WHERE league_id = {league_id} AND updated < '{now}'")
+    
+    run_query(f"DELETE FROM `{TABLES.get('matchups')}` WHERE week = {week}")
+    write_to_bigquery(TABLES.get('matchups'), schemas.get('matchups'), matchups)
 
 
 def get_league_data(data: dict, league: dict):
@@ -234,3 +392,135 @@ def get_league_week_data(data: dict, year: int, week: int, season: League, leagu
 
 def cleanup(text: str) -> str:
     return ' '.join(c.capitalize() for c in text.split()).strip().replace('  ', ' ')
+
+
+def organize_team(players: list, mode: str = 'default') -> dict:
+
+    team = {'starters': [], 'bench': [], 'points': 0, 'projected': 0}
+
+    for player in players:
+        if 'D/ST' not in player.get('name'):
+            player['name'] = f"{player.get('name').split()[0][0]}. {' '.join(player.get('name').split()[1:])}"
+        player['display'] = player.get('points') if player.get('play_status') != 'future' else \
+            'BYE' if not player.get('gametime') or player.get('gametime') == NO_GAMETIME else '--'
+        team['bench' if player.get('slot') in ['BE', 'IR'] else 'starters'].append(player)
+
+    team['starters'] = sorted(team.get('starters'), key=player_sort)
+    team['bench'] = sorted(team.get('bench'), key=player_sort)
+    team['show'] = []
+
+    if mode == 'max':
+    
+        ordered_players = sorted(team.get('starters') + team.get('bench'), key=lambda x: x.get('projected', 0), reverse=True)
+
+        for position in ['QB', 'RB', 'WR', 'TE', 'FLEX', 'DST', 'K']:
+            if position != 'FLEX':
+                team['show'].append((position, [p for p in ordered_players if p.get('position') == position][0]))
+
+            else:
+                for p in ordered_players:
+                    if p.get('position') in ['RB', 'WR', 'TE'] and p not in [op[1] for op in team.get('show')]:
+                        team['show'].append((position, p))
+                        break
+
+            if position in ['RB', 'WR']:
+                team['show'].append((position, [p for p in ordered_players if p.get('position') == position][1]))
+
+            # if team.get('info').get('platform') == 'sleeper' and position == 'FLEX':
+            #     for p in ordered_players:
+            #         if p.get('position') in ['RB', 'WR', 'TE'] and p not in [op[1] for op in team.get('show')]:
+            #             team['show'].append((position, p))
+            #             break
+        
+        team['show'] = [p[1] for p in team.get('show')]
+    
+    elif mode == 'default':
+
+        team['show'] = team.get('starters')
+    
+    elif mode == 'all':
+    
+        team['show'] = team.get('starters').extend(team.get('bench'))
+
+    for player in team.get('show'):
+        team['points'] += player.get('points')
+        team['projected'] += player.get('projected')
+
+    team['projected'] = round(team.get('projected'), 2)
+
+    return team
+
+
+def get_all_matchups(profile_name: str, week: int, mode: str = 'default') -> list:
+
+    runtime = datetime.datetime.utcnow()
+
+    leagues = load_profiles().get(profile_name)
+    matchups = []
+
+    if not leagues:
+        return []
+
+    dbs = {
+        'matchups': run_query(f"SELECT * FROM `{TABLES.get('matchups')}` WHERE week = {week}", as_list=True),
+        'teams': run_query(f"SELECT * FROM `{TABLES.get('teams')}`", as_list=True),
+        'projections': run_query(f"SELECT * FROM `{TABLES.get('projections')}` WHERE week = {week}", as_list=True),
+        'scores': run_query(f"SELECT * FROM `{TABLES.get('scores')}` WHERE week = {week}", as_list=True),
+    }
+
+    projections = {}
+
+    for projection in dbs.get('projections'):
+
+        projection = dict(projection)
+
+        projection['team'] = translate_team('fp', 'espn', projection.get('team'))
+
+        if projection.get('team') not in projections.keys():
+            projections[projection.get('team')] = {}
+
+        projections[projection.get('team')][projection.get('player')] = {
+            'standard': projection.get('standard'),
+            'half-point-ppr': projection.get('half-point-ppr'),
+            'ppr': projection.get('ppr')
+        }
+    
+    dbs['projections'] = projections
+
+    print(f"db load: {(datetime.datetime.utcnow() - runtime).seconds}s")
+
+    for league in leagues:
+
+        league_id = league.get('league_id')
+
+        home = {'id': league.get('team_id'), 'players': []}
+        away = {'id': 0, 'players': []}
+
+        for matchup in dbs.get('matchups'):
+            if matchup.league_id == league_id and matchup.home == home.get('id'):
+                away['id'] = matchup.away
+                break
+
+        for team in dbs.get('teams'):
+            if team.league_id == league_id and team.team_id == home.get('id'):
+                home['team'] = team.team
+                home['owner'] = team.owner
+            elif team.league_id == league_id and team.team_id == away.get('id'):
+                away['team'] = team.team
+                away['owner'] = team.owner
+
+        for score in dbs.get('scores'):
+            score = dict(score)
+            if score.get('league_id') == league_id and score.get('team_id') == home.get('id'):
+                score['projected'] = dbs.get('projections').get(score.get('team'), {}).get(score.get('name'), {}).get(league.get('scoring'), 0)
+                home['players'].append(score)
+            elif score.get('league_id') == league_id and score.get('team_id') == away.get('id'):
+                score['projected'] = dbs.get('projections').get(score.get('team'), {}).get(score.get('name'), {}).get(league.get('scoring'), 0)
+                away['players'].append(score)
+
+        home['players'] = organize_team(home.get('players'), mode)
+        away['players'] = organize_team(away.get('players'), mode)
+
+        matchups.append({'home': home, 'away': away})
+
+    return matchups
