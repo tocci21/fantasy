@@ -58,17 +58,16 @@ def update_projections(week: int = helpers.get_current_week()):
         player = dict(player)
         old = {'half-point-ppr': player.get('half-point-ppr'), 'ppr': player.get('ppr')}
         new = projections_np.get(player.get('team'), {}).get(player.get('player'), {})
-        if old != new:
-            for key, value in old.items():
-                if abs(old.get(key, 0) - new.get(key, 0)) > 5:
-                    changes.append({
-                        'player': player.get('player'),
-                        'team': player.get('team'),
-                        'scoring': key,
-                        'old': old.get(key, 0),
-                        'new': new.get(key, 0),
-                        'updated': runtime,
-                    })
+        if old.get('ppr') != new.get('ppr'):
+            if abs(old.get('ppr', 0) - new.get('ppr', 0)) > 5:
+                changes.append({
+                    'player': player.get('player'),
+                    'team': player.get('team'),
+                    'scoring': key,
+                    'old': old.get(key, 0),
+                    'new': new.get(key, 0),
+                    'updated': runtime,
+                })
 
     return
     for team, team_data in projections.items():
@@ -183,6 +182,20 @@ def update_teams():
 def update_scores():
     helpers.update_all_scores()
     return Response('Success', 200)
+
+
+@app.route("/changes", methods=['GET'])
+def list_changes():
+
+    changes = []
+
+    for change in helpers.run_query(f"SELECT * FROM `{TABLE_NAMES.get('changes')}` ORDER BY updated DESC LIMIT 20", as_list=True):
+        change = dict(change)
+        change['diff'] = f"<span class='change-{'negative' if change.get('old') > change.get('new') else 'positive'}'>" \
+                         f"{'-' if change.get('old') > change.get('new') else '+'}{abs(change.get('old') - change.get('new'))}</span>"
+        changes.append(change)
+
+    return render_template('changes.html', changes=changes)
 
 
 @app.route("/records", methods=['GET'])

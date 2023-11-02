@@ -274,3 +274,28 @@ body {
 .player.future {
     background-color: black;
 }
+
+.changes-container {
+    width: 30%;
+}
+
+.change {
+    display: grid;
+    grid-template-columns: 25% 5% 5% 25% 10% 30%;
+}
+
+.change-team, .change-scoring, .change-scores, .change-diff {
+    text-align: center;
+}
+
+.change-updated {
+    text-align: right;
+}
+
+span.change-positive {
+    color: green;
+}
+
+span.change-negative {
+    color: red;
+}
