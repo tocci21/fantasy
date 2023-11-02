@@ -157,20 +157,26 @@ body {
 }
 
 .team-name {
-    display: grid;
+    /* display: grid; */
     align-items: center;
     padding: 10px 5px 5px 5px;
     font-weight: bolder;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin: auto;
+    width: 90%;
 }
 
 .team-header.even .team-name {
     padding-right: 10px;
-    text-align: right;
+    /* text-align: right; */
 }
 
 .team-header.odd .team-name {
     padding-left: 10px;
-    text-align: left;
+    /* text-align: left; */
 }
 
 .team-points, .team-projected {
