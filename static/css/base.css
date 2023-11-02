@@ -208,8 +208,16 @@ body {
     white-space: nowrap;
 }
 
-.player.played, .player.active {
+.player.today {
+    border-color: darkgreen;
+}
+
+.player.played {
     border-color: black;
+}
+
+.player.bye {
+    border-color: darkgoldenrod;
 }
 
 .player.future {
