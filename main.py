@@ -15,6 +15,7 @@ NO_GAMETIME = datetime.datetime(2000, 1, 1, tzinfo=pytz.timezone("America/Chicag
 TABLE_NAMES = {
     'projections': 'commander.projections',
     'scores': 'commander.scores',
+    'changes': 'commander.changes',
 }
 
 app = Flask(__name__)
@@ -238,11 +239,41 @@ def update_projections():
     runtime = helpers.get_current_central_datetime().strftime('%Y-%m-%d %H:%M:%S')
     week = helpers.get_current_week()
     rows = []
-    
-    table = helpers.TABLES.get('projections')
+    changes = []
+    responses = []
 
+    old_projections = helpers.run_query(f"SELECT * FROM `{TABLE_NAMES.get('projections')}` WHERE week = {week}")
     projections = helpers.get_all_projections(week)
 
+    projections_np = {}
+
+    remove_positions = []
+
+    for team, team_data in projections.items():
+        projections_np[team] = {}
+        for position, position_data in team_data.items():
+            if position not in remove_positions:
+                remove_positions.append(position)
+            for player_name, player_data in position_data.items():
+                projections_np[team][player_name] = player_data
+
+    for player in old_projections:
+        player = dict(player)
+        old = {'half-point-ppr': player.get('half-point-ppr'), 'ppr': player.get('ppr')}
+        new = projections_np.get(player.get('team'), {}).get(player.get('player'), {})
+        if old != new:
+            for key, value in old.items():
+                if abs(old.get(key, 0) - new.get(key, 0)) > 5:
+                    changes.append({
+                        'player': player.get('player'),
+                        'team': player.get('team'),
+                        'scoring': key,
+                        'old': old.get(key, 0),
+                        'new': new.get(key, 0),
+                        'updated': runtime,
+                    })
+
+    return
     for team, team_data in projections.items():
         for position in team_data.values():
             for player, scoring in position.items():
@@ -269,13 +300,88 @@ def update_projections():
         {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
     ]
 
-    job_config = bigquery.LoadJobConfig(schema=schema, source_format='NEWLINE_DELIMITED_JSON')
-    job = bq.load_table_from_json(rows, table, job_config=job_config)
-    job.result()
+    helpers.write_to_bigquery(helpers.TABLES.get('projections'), schema, rows)
+    helpers.run_query(f"DELETE FROM `{table}` WHERE week = {week} AND updated < '{runtime}'")
 
-    bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}' AND week = {week}").result()
+    schema = [
+        {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "team",            "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "scoring",         "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "old",             "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "new",             "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
+    ]
 
-    return Response('Projections updated', status=200)
+    helpers.write_to_bigquery(helpers.TABLES.get('changes'), schema, rows)
+
+    return True
+
+
+def update_teams():
+
+    leagues = []
+    rows = []
+    responses = []
+
+    for profile in helpers.load_profiles().values():
+        for league in profile:
+            if league.get('league_id') not in [l.get('league_id') for l in leagues]:
+                leagues.append(league)
+
+    for league in leagues:
+
+        if league.get('platform') == 'espn':
+
+            url = f"https://fantasy.espn.com/apis/v3/games/ffl/seasons/2023/segments/0/leagues/{league.get('league_id')}?view=mTeam"
+
+            data = requests.get(url, cookies={'espn_s2': league.get('s2'), 'swid': league.get('swid')}).json()
+
+            owner_map = {}
+
+            for member in data.get('members'):
+                owner_map[member.get('id')] = f"{member.get('firstName')} {member.get('lastName')}"
+
+            for team in data.get('teams'):
+                rows.append({
+                    'league_id': league.get('league_id'),
+                    'team_id': team.get('id'),
+                    'team': helpers.cleanup(team.get('name', 'None')),
+                    'owner': helpers.cleanup(owner_map.get(team.get('owners', ['None'])[0], 'None')),
+                })
+
+        if league.get('platform') == 'sleeper':
+
+            rosters = {}
+
+            for roster in requests.get(f"https://api.sleeper.app/v1/league/{league.get('league_id')}/rosters").json():
+                rosters[roster.get('owner_id')] = roster.get('roster_id')
+            
+            for user in requests.get(f"https://api.sleeper.app/v1/league/{league.get('league_id')}/users").json():
+                if not rosters.get(user.get('user_id')):
+                    continue
+                rows.append({
+                    'league_id': league.get('league_id'),
+                    'team_id': rosters.get(user.get('user_id')),
+                    'team': user.get('metadata').get('team_name') if user.get('metadata').get('team_name') else user.get('display_name'),
+                    'owner': user.get('display_name'),
+                })
+
+        table = TABLE_NAMES.get('teams')
+
+        schema = [
+            {"name": "league_id", "type": "INTEGER", "mode": "REQUIRED"},
+            {"name": "team_id",   "type": "INTEGER", "mode": "REQUIRED"},
+            {"name": "team",      "type": "STRING",  "mode": "REQUIRED"},
+            {"name": "owner",     "type": "STRING",  "mode": "REQUIRED"},
+        ]
+
+        for row in rows:
+            print(row)
+
+        helpers.run_query(f"TRUNCATE TABLE {table}")
+        helpers.write_to_bigquery(table, schema, rows)
+
+    return True
 
 
 @app.route("/update/scores", methods=['GET'])
