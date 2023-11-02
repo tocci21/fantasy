@@ -17,84 +17,6 @@ TABLE_NAMES = {
 app = Flask(__name__)
 
 
-def lookup_projected(projections: dict, name: str, team: str, position: str, scoring: str) -> float:
-    if position in ['D/ST', 'DEF']:
-        position = 'DST'
-    try:
-        return projections.get(team, 0).get(position, 0).get(name, 0).get(scoring, 0)
-    except (AttributeError, KeyError):
-        return 0
-
-
-# def get_current_points(data: dict, platform: str, league_id: int, scoring: str, week: int) -> list:
-
-
-def organize_team(players: list, mode: str = 'default') -> dict:
-
-    team = {'info': players[0], 'roster': [], 'active': [], 'inactive': [], 'points': 0, 'projected': 0}
-
-    for player in players[1:]:
-
-        if player.get('play_status') != 'future':
-            player['display_even'] = player['display_odd'] = player.get('points')
-        elif player.get('gametime') != NO_GAMETIME:
-            if not player.get('gametime'):
-                player['display_even'] = 'BYE'
-            else:
-                player['display_even'] = player.get('gametime') \
-                .strftime("%a %I:%M").replace('Sun', 'S').replace('Mon', 'M').replace('Thu', 'T')
-            player['display_odd'] = ' '.join(reversed(player.get('display_even').split(' ')))
-        else:
-            player['display_even'] = player['display_odd'] = 'BYE'
-
-        team['inactive' if player.get('slot') in ['BE', 'IR'] else 'active'].append(player)
-
-    for key in ['active', 'inactive']:
-        team[key] = sorted(team.get(key), key=helpers.player_sort)
-
-    ordered_players = sorted(players[1:], key=lambda x: x.get('projected', 0), reverse=True)
-
-    if mode == 'max':
-
-        for position in ['QB', 'RB', 'WR', 'TE', 'FLEX', 'DST', 'K']:
-            if position != 'FLEX':
-                team['roster'].append((position, [p for p in ordered_players if p.get('position') == position][0]))
-
-            else:
-                for p in ordered_players:
-                    if p.get('position') in ['RB', 'WR', 'TE'] and p not in [op[1] for op in team.get('roster')]:
-                        team['roster'].append((position, p))
-                        break
-
-            if position in ['RB', 'WR']:
-                team['roster'].append((position, [p for p in ordered_players if p.get('position') == position][1]))
-
-            if team.get('info').get('platform') == 'sleeper' and position == 'FLEX':
-                for p in ordered_players:
-                    if p.get('position') in ['RB', 'WR', 'TE'] and p not in [op[1] for op in team.get('roster')]:
-                        team['roster'].append((position, p))
-                        break
-        
-        team['roster'] = [p[1] for p in team.get('roster')]
-    
-    elif mode == 'default':
-
-        team['roster'].extend(team['active'])
-    
-    elif mode == 'all':
-    
-        for key in ['active', 'inactive']:
-            team['roster'].extend(team[key])
-
-    for player in team.get('roster'):
-        team['points'] += player.get('points')
-        team['projected'] += player.get('projected')
-
-    team['projected'] = round(team.get('projected'), 2)
-
-    return team
-
-
 @app.route("/update/all", methods=['GET'])
 def update_all():
     """ Update all but live scores """
@@ -218,46 +140,8 @@ def update_teams():
 
 @app.route("/update/scores", methods=['GET'])
 def update_scores():
-
-    runtime = helpers.get_current_central_datetime().strftime('%Y-%m-%d %H:%M:%S')
-    week = helpers.get_current_week()
-    rows = []
-    
-    table = helpers.TABLES.get('scores')
-
-    scores = helpers.get_all_scores(week)
-
-    for team, team_data in projections.items():
-        for position in team_data.values():
-            for player, scoring in position.items():
-                row = {
-                    'player': player,
-                    'team': team,
-                    'week': week,
-                    'standard': 0,
-                    'half-point-ppr': scoring.get('half-point-ppr', 0),
-                    'ppr': scoring.get('ppr', 0),
-                    'updated': runtime,
-                }
-                rows.append(row)
-
-    bq = helpers.initialize_bigquery_client()
-
-    schema = [
-        {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
-        {"name": "team",            "type": "STRING",   "mode": "REQUIRED"},
-        {"name": "week",            "type": "INTEGER",  "mode": "REQUIRED"},
-        {"name": "standard",        "type": "FLOAT",    "mode": "REQUIRED"},
-        {"name": "half-point-ppr",  "type": "FLOAT",    "mode": "REQUIRED"},
-        {"name": "ppr",             "type": "FLOAT",    "mode": "REQUIRED"},
-        {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
-    ]
-
-    job_config = bigquery.LoadJobConfig(schema=schema, source_format='NEWLINE_DELIMITED_JSON')
-    job = bq.load_table_from_json(rows, table, job_config=job_config)
-    job.result()
-
-    bq.query(f"DELETE FROM `{table}` WHERE updated < '{runtime}'").result()
+    helpers.update_all_scores()
+    return Response('Success', 200)
 
 
 @app.route("/records", methods=['GET'])

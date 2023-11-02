@@ -2,21 +2,9 @@
 <head>
     <title>fantasy</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <meta http-equiv="refresh" content="60">
 </head>
 <body>
-    <div class="buttons-container">
-        <div class="buttons">
-            {% set url = request.url.split('?')[0] %}
-            <div class="button"><a href="{{ url }}">REFRESH</a></div>
-            <div class="button"><a href="{{ url }}?mode=all">ALL</a></div>
-            <div class="button"><a href="{{ url }}?mode=max">MAX</a></div>
-            <div class="button">
-                <a href="{{ url }}?week={{ week - 1 }}">&lt;</a>
-                 WEEK 
-                <a href="{{ url }}?week={{ week + 1 }}">&gt;</a>
-            </div>
-        </div>
-    </div>
     <div class="matchups">
         {% for matchup in matchups %}
         <div class="league">

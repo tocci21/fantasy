@@ -156,9 +156,9 @@ def get_all_projections(week: int = get_current_week()) -> dict:
     return projections
 
 
-def get_all_scores(week: int) -> dict:
+def update_all_scores(week: int = get_current_week()) -> dict:
 
-    now = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    runtime = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     leagues = []
     matchups = []
     gametimes = {}
@@ -229,21 +229,25 @@ def get_all_scores(week: int) -> dict:
                         if player.get('projected') == 0 and player.get('status') == 'ACTIVE':
                             player['status'] = 'warning'
 
-                        try:
+                        if not hasattr(player_data, 'game_date'):
+                            player['gametime'] = NO_GAMETIME
+                            player['play_status'] = 'bye'
+                        
+                        else:
                             player['gametime'] = player_data.game_date.astimezone(pytz.timezone('America/Chicago'))
-                            if get_current_central_datetime() >= player.get('gametime'):
+                            now = get_current_central_datetime()
+                            if now >= player.get('gametime'):
                                 player['play_status'] = 'played' if player_data.game_played == 100 else 'playing'
+                            elif player.get('gametime').strftime('%Y-%m-%d') == now.strftime('%Y-%m-%d'):
+                                player['play_status'] = 'today'
                             else:
                                 player['play_status'] = 'future'
-                        except AttributeError as e:
-                            player['gametime'] = NO_GAMETIME
-                            player['play_status'] = 'future'
 
-                        if player.get('gametime') != NO_GAMETIME and player_data.proTeam not in gametimes.keys():
+                        if player.get('gametime') and player_data.proTeam not in gametimes.keys():
                             gametimes[player_data.proTeam] = (player.get('gametime'), player_data.game_played == 100)
 
                         player['gametime'] = player.get('gametime').strftime('%Y-%m-%d %H:%M:%S')
-                        player['updated'] = now
+                        player['updated'] = runtime
 
                         players.append(player)
 
@@ -284,14 +288,25 @@ def get_all_scores(week: int) -> dict:
 
                     if player.get('projected') == 0 and player.get('status') == 'ACTIVE':
                         player['status'] = 'warning'
-
+                    
                     gametime, gamedone = gametimes.get(translate_team('sleeper', 'espn', player_data.get('team')), (None, None))
 
-                    player['gametime'] = gametime if gametime else NO_GAMETIME
-                    player['play_status'] = 'future' if not gametime or get_current_central_datetime() < gametime else 'played' if gamedone else 'playing'
+                    if not gametime or gametime == NO_GAMETIME:
+                        player['gametime'] = NO_GAMETIME
+                        player['play_status'] = 'bye'
+                    
+                    else:
+                        player['gametime'] = gametime
+                        now = get_current_central_datetime()
+                        if now >= player.get('gametime'):
+                            player['play_status'] = 'played' if gamedone else 'playing'
+                        elif player.get('gametime').strftime('%Y-%m-%d') == now.strftime('%Y-%m-%d'):
+                            player['play_status'] = 'today'
+                        else:
+                            player['play_status'] = 'future'
 
                     player['gametime'] = player.get('gametime').strftime('%Y-%m-%d %H:%M:%S')
-                    player['updated'] = now
+                    player['updated'] = runtime
 
                     players.append(player)
                 
@@ -305,7 +320,7 @@ def get_all_scores(week: int) -> dict:
                     matchup = []
         
         write_to_bigquery(TABLES.get('scores'), schemas.get('scores'), players)
-        run_query(f"DELETE FROM `{TABLES.get('scores')}` WHERE league_id = {league_id} AND updated < '{now}'")
+        run_query(f"DELETE FROM `{TABLES.get('scores')}` WHERE league_id = {league_id} AND updated < '{runtime}'")
     
     run_query(f"DELETE FROM `{TABLES.get('matchups')}` WHERE week = {week}")
     write_to_bigquery(TABLES.get('matchups'), schemas.get('matchups'), matchups)
@@ -401,8 +416,10 @@ def organize_team(players: list, mode: str = 'default') -> dict:
     for player in players:
         if 'D/ST' not in player.get('name'):
             player['name'] = f"{player.get('name').split()[0][0]}. {' '.join(player.get('name').split()[1:])}"
-        player['display'] = player.get('points') if player.get('play_status') != 'future' else \
-            'BYE' if not player.get('gametime') or player.get('gametime') == NO_GAMETIME else '--'
+        if player.get('play_status') in ['played', 'playing']:
+            player['display'] = player.get('points')
+        else:
+            player['display'] = '--'
         team['bench' if player.get('slot') in ['BE', 'IR'] else 'starters'].append(player)
 
     team['starters'] = sorted(team.get('starters'), key=player_sort)
