@@ -63,9 +63,9 @@ def update_projections(week: int = helpers.get_current_week()):
                 changes.append({
                     'player': player.get('player'),
                     'team': player.get('team'),
-                    'scoring': key,
-                    'old': old.get(key, 0),
-                    'new': new.get(key, 0),
+                    'scoring': 'ppr',
+                    'old': old.get('ppr', 0),
+                    'new': new.get('ppr', 0),
                     'updated': runtime,
                 })
 
