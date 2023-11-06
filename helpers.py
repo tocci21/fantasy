@@ -596,7 +596,7 @@ def update_projections(week: int = get_current_week()):
     changes = []
     responses = []
 
-    old_projections = run_query(f"SELECT * FROM `{TABLE_NAMES.get('projections')}` WHERE week = {week}")
+    old_projections = run_query(f"SELECT * FROM `{TABLES.get('projections')}` WHERE week = {week}")
     projections = get_all_projections(week)
 
     projections_np = {}
@@ -728,7 +728,7 @@ def update_teams():
             print(row)
 
         if rows:
-            run_query(f"DELETE FROM `{TABLE_NAMES.get('teams')}` WHERE league_id = {league.get('league_id')}")
+            run_query(f"DELETE FROM `{TABLES.get('teams')}` WHERE league_id = {league.get('league_id')}")
             write_to_bigquery(table, schema, rows)
 
     return True

@@ -26,7 +26,6 @@ def update_all():
 
     responses.append(('projections', helpers.update_projections()))
     responses.append(('teams', helpers.update_teams()))
-    responses.append(('progress', helpers.update_progress()))
 
     response = ', '.join(f"{key}: {value}" for key, value in responses)
 
@@ -35,6 +34,7 @@ def update_all():
 
 @app.route("/update/scores", methods=['GET'])
 def update_scores():
+    helpers.update_progress()
     helpers.update_all_scores()
     return Response('Success', 200)
 
