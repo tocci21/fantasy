@@ -26,6 +26,7 @@ def update_all():
 
     responses.append(('projections', helpers.update_projections()))
     responses.append(('teams', helpers.update_teams()))
+    responses.append(('progress', helpers.update_progress()))
 
     response = ', '.join(f"{key}: {value}" for key, value in responses)
 
