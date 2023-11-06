@@ -14,13 +14,15 @@
                     <div class="team">
                         <div class="team-header {{ class }}">
                             {% if class == "even" %}
+                            <div class="team-chance">{{ team.players.win_chance }}</div>
                             <div class="team-name">{{ team.owner.split()[0]|upper }}</div>
-                            <div class="team-projected">({{ team.players.projected }})</div>
+                            <div class="team-projected {{ team.players.winning_projected }}">({{ team.players.projected }})</div>
                             {% endif %}
-                            <div class="team-points">{{ "%.02f"|format(team.players.points) }}</div>
+                            <div class="team-points {{ team.players.winning_points }}">{{ "%.02f"|format(team.players.points) }}</div>
                             {% if class == "odd" %}
-                            <div class="team-projected">({{ team.players.projected }})</div>
+                            <div class="team-projected {{ team.players.winning_projected }}">({{ team.players.projected }})</div>
                             <div class="team-name">{{ team.owner.split()[0]|upper }}</div>
+                            <div class="team-chance">{{ team.players.win_chance }}</div>
                             {% endif %}
                         </div>
                         <div class="players {{ class }}">

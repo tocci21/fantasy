@@ -148,11 +148,19 @@ body {
     margin-bottom: 10px;
 }
 
-.team-header.even, .player.even {
+.team-header.even {
+    grid-template-columns: 10% 40% 25% 25%;
+}
+
+.player.even {
     grid-template-columns: 50% 25% 25%;
 }
 
-.team-header.odd, .player.odd {
+.team-header.odd {
+    grid-template-columns: 25% 25% 40% 10%;
+}
+
+.player.odd {
     grid-template-columns: 25% 25% 50%;
 }
 
@@ -298,4 +306,12 @@ span.change-positive {
 
 span.change-negative {
     color: red;
+}
+
+div.team-projected.winning {
+    color: yellow;
+}
+
+div.team-points.winning {
+    color: lawngreen;
 }

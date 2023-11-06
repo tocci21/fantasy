@@ -1,5 +1,6 @@
 import datetime
 import json
+import math
 import threading
 import time
 
@@ -18,6 +19,7 @@ TABLES = {
     'projections': 'commander.projections',
     'scores': 'commander.scores',
     'matchups': 'commander.matchups',
+    'game_progress': 'commander.game_progress',
 }
 
 
@@ -45,7 +47,7 @@ def load_profiles() -> dict:
     profiles = {}
     bq = bigquery.Client()
 
-    for league in [league for league in bq.query(f"SELECT * FROM `{TABLES.get('leagues')}` ORDER BY platform").result()]:
+    for league in [league for league in bq.query(f"SELECT * FROM `{TABLES.get('leagues')}` ORDER BY platform, league_id").result()]:
 
         if league.profile not in profiles.keys():
             profiles[league.profile] = []
@@ -77,10 +79,14 @@ def initialize_espn_league(league_id: int, year: int) -> League:
     return League(league_id=league_id, year=year, espn_s2=s2, swid=swid)
 
 
-def get_current_week():
+def get_current_week() -> int:
     season_start = datetime.datetime(2023, 9, 5, tzinfo=pytz.timezone("America/Chicago"))
     delta = get_current_central_datetime() - season_start
     return int(delta.days / 7) + 1
+
+
+def get_current_year() -> int:
+    return datetime.datetime.utcnow().year
 
 
 def get_current_central_datetime() -> datetime.datetime:
@@ -98,9 +104,9 @@ def player_sort(item: dict) -> tuple:
 def translate_team(input: str, output: str, team_name: str) -> str:
 
     teams = [
-        {'espn': 'WSH', 'sleeper': 'WAS', 'fp': 'WAS'},
-        {'espn': 'JAX', 'sleeper': 'JAX', 'fp': 'JAC'},
-        {'espn': 'OAK', 'sleeper': 'LV', 'fp': 'LV'},
+        {'espn': 'WSH', 'sleeper': 'WAS', 'fp': 'WAS', 'nfl': 'WSH'},
+        {'espn': 'JAX', 'sleeper': 'JAX', 'fp': 'JAC', 'nfl': 'JAX'},
+        {'espn': 'OAK', 'sleeper': 'LV', 'fp': 'LV', 'nfl': 'LV'},
     ]
 
     for team in teams:
@@ -319,11 +325,13 @@ def update_all_scores(week: int = get_current_week()) -> dict:
                     matchups.append({'league_id': league_id, 'week': week, 'home': matchup[1], 'away': matchup[0]})
                     matchup = []
         
-        write_to_bigquery(TABLES.get('scores'), schemas.get('scores'), players)
-        run_query(f"DELETE FROM `{TABLES.get('scores')}` WHERE league_id = {league_id} AND updated < '{runtime}'")
+        if players:
+            write_to_bigquery(TABLES.get('scores'), schemas.get('scores'), players)
+            run_query(f"DELETE FROM `{TABLES.get('scores')}` WHERE league_id = {league_id} AND updated < '{runtime}'")
     
-    run_query(f"DELETE FROM `{TABLES.get('matchups')}` WHERE week = {week}")
-    write_to_bigquery(TABLES.get('matchups'), schemas.get('matchups'), matchups)
+    if matchups:
+        run_query(f"DELETE FROM `{TABLES.get('matchups')}` WHERE week = {week}")
+        write_to_bigquery(TABLES.get('matchups'), schemas.get('matchups'), matchups)
 
 
 def get_league_data(data: dict, league: dict):
@@ -409,7 +417,7 @@ def cleanup(text: str) -> str:
     return ' '.join(c.capitalize() for c in text.split()).strip().replace('  ', ' ')
 
 
-def organize_team(players: list, mode: str = 'default') -> dict:
+def organize_team(players: list, mode: str = 'default', flex_count = 1) -> dict:
 
     team = {'starters': [], 'bench': [], 'points': 0, 'projected': 0}
 
@@ -443,11 +451,11 @@ def organize_team(players: list, mode: str = 'default') -> dict:
             if position in ['RB', 'WR']:
                 team['show'].append((position, [p for p in ordered_players if p.get('position') == position][1]))
 
-            # if team.get('info').get('platform') == 'sleeper' and position == 'FLEX':
-            #     for p in ordered_players:
-            #         if p.get('position') in ['RB', 'WR', 'TE'] and p not in [op[1] for op in team.get('show')]:
-            #             team['show'].append((position, p))
-            #             break
+            if flex_count == 2 and position == 'FLEX':
+                for p in ordered_players:
+                    if p.get('position') in ['RB', 'WR', 'TE'] and p not in [op[1] for op in team.get('show')]:
+                        team['show'].append((position, p))
+                        break
         
         team['show'] = [p[1] for p in team.get('show')]
     
@@ -457,7 +465,8 @@ def organize_team(players: list, mode: str = 'default') -> dict:
     
     elif mode == 'all':
     
-        team['show'] = team.get('starters').extend(team.get('bench'))
+        team['show'] = team.get('starters')
+        team['show'].extend(team.get('bench'))
 
     for player in team.get('show'):
         team['points'] += player.get('points')
@@ -483,6 +492,7 @@ def get_all_matchups(profile_name: str, week: int, mode: str = 'default') -> lis
         'teams': run_query(f"SELECT * FROM `{TABLES.get('teams')}`", as_list=True),
         'projections': run_query(f"SELECT * FROM `{TABLES.get('projections')}` WHERE week = {week}", as_list=True),
         'scores': run_query(f"SELECT * FROM `{TABLES.get('scores')}` WHERE week = {week}", as_list=True),
+        'game_progress': run_query(f"SELECT * FROM `{TABLES.get('game_progress')}` WHERE week = {week}", as_list=True),
     }
 
     projections = {}
@@ -503,6 +513,21 @@ def get_all_matchups(profile_name: str, week: int, mode: str = 'default') -> lis
         }
     
     dbs['projections'] = projections
+
+    progress = {}
+
+    for game in dbs.get('game_progress'):
+
+        game = dict(game)
+
+        game['team'] = translate_team('nfl', 'espn', game.get('team'))
+
+        if progress.get('team') not in progress.keys():
+            progress[game.get('team')] = {}
+        
+        progress[game.get('team')] = game.get('progress')
+    
+    dbs['progress'] = progress
 
     print(f"db load: {(datetime.datetime.utcnow() - runtime).seconds}s")
 
@@ -527,17 +552,227 @@ def get_all_matchups(profile_name: str, week: int, mode: str = 'default') -> lis
                 away['owner'] = team.owner
 
         for score in dbs.get('scores'):
+
             score = dict(score)
+
             if score.get('league_id') == league_id and score.get('team_id') == home.get('id'):
-                score['projected'] = dbs.get('projections').get(score.get('team'), {}).get(score.get('name'), {}).get(league.get('scoring'), 0)
+                projected = dbs.get('projections').get(score.get('team'), {}).get(score.get('name'), {}).get(league.get('scoring'), 0)
+                score['projected'] = calculate_projected(score, projected, progress.get(score.get('team')))
                 home['players'].append(score)
             elif score.get('league_id') == league_id and score.get('team_id') == away.get('id'):
-                score['projected'] = dbs.get('projections').get(score.get('team'), {}).get(score.get('name'), {}).get(league.get('scoring'), 0)
+                projected = dbs.get('projections').get(score.get('team'), {}).get(score.get('name'), {}).get(league.get('scoring'), 0)
+                score['projected'] = calculate_projected(score, projected, progress.get(score.get('team')))
                 away['players'].append(score)
 
-        home['players'] = organize_team(home.get('players'), mode)
-        away['players'] = organize_team(away.get('players'), mode)
+        flex_count = 2 if league.get('platform') == 'sleeper' else 1
+
+        home['players'] = organize_team(home.get('players'), mode, flex_count)
+        away['players'] = organize_team(away.get('players'), mode, flex_count)
+
+        home['players']['winning_points'] = 'winning' if home.get('players').get('points') > away.get('players').get('points') else 'losing'
+        away['players']['winning_points'] = 'winning' if away.get('players').get('points') > home.get('players').get('points') else 'losing'
+
+        home['players']['winning_projected'] = 'winning' if home.get('players').get('projected') > away.get('players').get('projected') else 'losing'
+        away['players']['winning_projected'] = 'winning' if away.get('players').get('projected') > home.get('players').get('projected') else 'losing'
+
+        home_chance = 1 / (1 + math.exp((away.get('players').get('points') - home.get('players').get('points')) / 400))
+        away_chance = 1 / (1 + math.exp((home.get('players').get('points') - away.get('players').get('points')) / 400))
+
+        home['players']['win_chance'] = f"{round(100 * home_chance)}%"
+        away['players']['win_chance'] = f"{round(100 * away_chance)}%"
+
+        home['players']['win_chance'] = ""
+        away['players']['win_chance'] = ""
 
         matchups.append({'home': home, 'away': away})
 
     return matchups
+
+
+def update_projections(week: int = get_current_week()):
+
+    runtime = get_current_central_datetime().strftime('%Y-%m-%d %H:%M:%S')
+    rows = []
+    changes = []
+    responses = []
+
+    old_projections = run_query(f"SELECT * FROM `{TABLE_NAMES.get('projections')}` WHERE week = {week}")
+    projections = get_all_projections(week)
+
+    projections_np = {}
+
+    remove_positions = []
+
+    for team, team_data in projections.items():
+        projections_np[team] = {}
+        for position, position_data in team_data.items():
+            if position not in remove_positions:
+                remove_positions.append(position)
+            for player_name, player_data in position_data.items():
+                projections_np[team][player_name] = player_data
+
+    for player in old_projections:
+        player = dict(player)
+        old = {'half-point-ppr': player.get('half-point-ppr'), 'ppr': player.get('ppr')}
+        new = projections_np.get(player.get('team'), {}).get(player.get('player'), {})
+        if old.get('ppr') != new.get('ppr'):
+            if abs(old.get('ppr', 0) - new.get('ppr', 0)) > 5:
+                changes.append({
+                    'player': player.get('player'),
+                    'team': player.get('team'),
+                    'scoring': key,
+                    'old': old.get(key, 0),
+                    'new': new.get(key, 0),
+                    'updated': runtime,
+                })
+
+    return
+    for team, team_data in projections.items():
+        for position in team_data.values():
+            for player, scoring in position.items():
+                row = {
+                    'player': player,
+                    'team': team,
+                    'week': week,
+                    'standard': 0,
+                    'half-point-ppr': scoring.get('half-point-ppr', 0),
+                    'ppr': scoring.get('ppr', 0),
+                    'updated': runtime,
+                }
+                rows.append(row)
+
+    schema = [
+        {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "team",            "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "week",            "type": "INTEGER",  "mode": "REQUIRED"},
+        {"name": "standard",        "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "half-point-ppr",  "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "ppr",             "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
+    ]
+
+    write_to_bigquery(TABLES.get('projections'), schema, rows)
+    run_query(f"DELETE FROM `{table}` WHERE week = {week} AND updated < '{runtime}'")
+
+    schema = [
+        {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "team",            "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "scoring",         "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "old",             "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "new",             "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
+    ]
+
+    write_to_bigquery(TABLES.get('changes'), schema, rows)
+
+    return True
+
+
+def update_teams():
+
+    leagues = []
+
+    for profile in load_profiles().values():
+        for league in profile:
+            if league.get('league_id') not in [l.get('league_id') for l in leagues]:
+                leagues.append(league)
+
+    for league in leagues:
+  
+        rows = []
+
+        if league.get('platform') == 'espn':
+
+            url = f"https://fantasy.espn.com/apis/v3/games/ffl/seasons/2023/segments/0/leagues/{league.get('league_id')}?view=mTeam"
+
+            data = requests.get(url, cookies={'espn_s2': league.get('s2'), 'swid': league.get('swid')}).json()
+
+            owner_map = {}
+
+            for member in data.get('members'):
+                owner_map[member.get('id')] = f"{member.get('firstName')} {member.get('lastName')}"
+
+            for team in data.get('teams'):
+                rows.append({
+                    'league_id': league.get('league_id'),
+                    'team_id': team.get('id'),
+                    'team': cleanup(team.get('name', 'None')),
+                    'owner': cleanup(owner_map.get(team.get('owners', ['None'])[0], 'None')),
+                })
+
+        if league.get('platform') == 'sleeper':
+
+            rosters = {}
+
+            for roster in requests.get(f"https://api.sleeper.app/v1/league/{league.get('league_id')}/rosters").json():
+                rosters[roster.get('owner_id')] = roster.get('roster_id')
+            
+            for user in requests.get(f"https://api.sleeper.app/v1/league/{league.get('league_id')}/users").json():
+                if not rosters.get(user.get('user_id')):
+                    continue
+                rows.append({
+                    'league_id': league.get('league_id'),
+                    'team_id': rosters.get(user.get('user_id')),
+                    'team': user.get('metadata').get('team_name') if user.get('metadata').get('team_name') else user.get('display_name'),
+                    'owner': user.get('display_name'),
+                })
+
+        schema = [
+            {"name": "league_id", "type": "INTEGER", "mode": "REQUIRED"},
+            {"name": "team_id",   "type": "INTEGER", "mode": "REQUIRED"},
+            {"name": "team",      "type": "STRING",  "mode": "REQUIRED"},
+            {"name": "owner",     "type": "STRING",  "mode": "REQUIRED"},
+        ]
+
+        for row in rows:
+            print(row)
+
+        if rows:
+            run_query(f"DELETE FROM `{TABLE_NAMES.get('teams')}` WHERE league_id = {league.get('league_id')}")
+            write_to_bigquery(table, schema, rows)
+
+    return True
+
+
+def update_progress():
+
+    rows = []
+
+    week = get_current_week()
+    year = get_current_year()
+
+    games = f"https://cdn.espn.com/core/nfl/schedule?xhr=1&year={year}&week={week}"
+
+    for day in requests.get(games).json().get('content').get('schedule').values():
+        for game in day.get('games'):
+            teams = [i.get('team').get('abbreviation') for i in game.get('competitions')[0].get('competitors')]
+            for team in teams:
+                period = game.get('competitions')[0].get('status').get('period')
+                clock = game.get('competitions')[0].get('status').get('clock')
+                progress = (((period - 1) * 900) + (900 - clock)) / 3600
+                display = game.get('competitions')[0].get('status').get('displayClock')
+                display = f"Q{period} {'0' if len(display) < 5 else ''}{display}"
+                rows.append({'year': year, 'week': week, 'team': team, 'progress': progress, 'display': display})
+
+    schema = [
+        {"name": "year",        "type": "INTEGER",  "mode": "REQUIRED"},
+        {"name": "week",        "type": "INTEGER",  "mode": "REQUIRED"},
+        {"name": "team",        "type": "STRING",   "mode": "REQUIRED"},
+        {"name": "progress",    "type": "FLOAT",    "mode": "REQUIRED"},
+        {"name": "display",     "type": "STRING",   "mode": "REQUIRED"}
+    ]
+    
+    if rows:
+        run_query(f"DELETE FROM `{TABLES.get('game_progress')}` WHERE year = {year} AND week = {week}")
+        write_to_bigquery(TABLES.get('game_progress'), schema, rows)
+
+
+def calculate_projected(player: dict, projection: float, progress: float) -> float:
+
+    if progress == None or player.get('play_status') == 'bye':
+        return 0
+
+    if player.get('play_status') == 'played' or player.get('status') == 'OUT':
+        return player.get('points', 0)
+    
+    return projection if progress < 0.25 else (player.get('points', 0) / progress)
