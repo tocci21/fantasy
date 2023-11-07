@@ -663,7 +663,7 @@ def update_projections(week: int = get_current_week()):
         {"name": "updated",         "type": "DATETIME", "mode": "REQUIRED"},
     ]
 
-    write_to_bigquery(TABLES.get('changes'), schema, rows)
+    write_to_bigquery(TABLES.get('changes'), schema, changes)
 
     return True
 
