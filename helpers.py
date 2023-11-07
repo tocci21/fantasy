@@ -20,6 +20,7 @@ TABLES = {
     'scores': 'commander.scores',
     'matchups': 'commander.matchups',
     'game_progress': 'commander.game_progress',
+    'changes': 'commander.changes',
 }
 
 
