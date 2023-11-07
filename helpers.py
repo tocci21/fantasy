@@ -729,7 +729,7 @@ def update_teams():
 
         if rows:
             run_query(f"DELETE FROM `{TABLES.get('teams')}` WHERE league_id = {league.get('league_id')}")
-            write_to_bigquery(table, schema, rows)
+            write_to_bigquery(TABLES.get('teams'), schema, rows)
 
     return True
 
