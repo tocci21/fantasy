@@ -652,7 +652,7 @@ def update_projections(week: int = get_current_week()):
     ]
 
     write_to_bigquery(TABLES.get('projections'), schema, rows)
-    run_query(f"DELETE FROM `{table}` WHERE week = {week} AND updated < '{runtime}'")
+    run_query(f"DELETE FROM `{TABLES.get('projections')}` WHERE week = {week} AND updated < '{runtime}'")
 
     schema = [
         {"name": "player",          "type": "STRING",   "mode": "REQUIRED"},
