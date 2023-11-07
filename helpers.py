@@ -626,7 +626,6 @@ def update_projections(week: int = get_current_week()):
                     'updated': runtime,
                 })
 
-    return
     for team, team_data in projections.items():
         for position in team_data.values():
             for player, scoring in position.items():
