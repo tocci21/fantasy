@@ -617,7 +617,7 @@ def update_projections(week: int = get_current_week()):
         old = {'half-point-ppr': player.get('half-point-ppr'), 'ppr': player.get('ppr')}
         new = projections_np.get(player.get('team'), {}).get(player.get('player'), {})
         if old.get('ppr') != new.get('ppr'):
-            if abs(old.get('ppr', 0) - new.get('ppr', 0)) > 5:
+            if abs(old.get('ppr', 0) - new.get('ppr', 0)) > 3:
                 changes.append({
                     'player': player.get('player'),
                     'team': player.get('team'),
@@ -723,9 +723,6 @@ def update_teams():
             {"name": "team",      "type": "STRING",  "mode": "REQUIRED"},
             {"name": "owner",     "type": "STRING",  "mode": "REQUIRED"},
         ]
-
-        for row in rows:
-            print(row)
 
         if rows:
             run_query(f"DELETE FROM `{TABLES.get('teams')}` WHERE league_id = {league.get('league_id')}")
