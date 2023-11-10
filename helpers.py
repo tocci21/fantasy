@@ -326,6 +326,11 @@ def update_all_scores(week: int = get_current_week()) -> dict:
                     matchups.append({'league_id': league_id, 'week': week, 'home': matchup[1], 'away': matchup[0]})
                     matchup = []
         
+        for player in players:
+            for suffix in [' Jr.', ' III']:
+                if suffix in player.get('name'):
+                    player['name'] = player.get('name').replace(suffix, '')
+
         if players:
             write_to_bigquery(TABLES.get('scores'), schemas.get('scores'), players)
             run_query(f"DELETE FROM `{TABLES.get('scores')}` WHERE league_id = {league_id} AND updated < '{runtime}'")
