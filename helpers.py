@@ -496,11 +496,14 @@ def get_all_matchups(profile_name: str, week: int, mode: str = 'default') -> lis
     if not leagues:
         return []
 
+    score_query = f"SELECT * EXCEPT (_rn) FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY league_id, team_id, week, name ORDER BY updated DESC) AS _rn " \
+                  f"FROM `{TABLES.get('scores')}`) WHERE week = {week}"
+
     dbs = {
         'matchups': run_query(f"SELECT * FROM `{TABLES.get('matchups')}` WHERE week = {week}", as_list=True),
         'teams': run_query(f"SELECT * FROM `{TABLES.get('teams')}`", as_list=True),
         'projections': run_query(f"SELECT * FROM `{TABLES.get('projections')}` WHERE week = {week}", as_list=True),
-        'scores': run_query(f"SELECT * FROM `{TABLES.get('scores')}` WHERE week = {week}", as_list=True),
+        'scores': run_query(score_query, as_list=True),
         'game_progress': run_query(f"SELECT * FROM `{TABLES.get('game_progress')}` WHERE week = {week}", as_list=True),
     }
 
