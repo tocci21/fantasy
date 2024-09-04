@@ -81,7 +81,7 @@ def initialize_espn_league(league_id: int, year: int) -> League:
 
 
 def get_current_week() -> int:
-    season_start = datetime.datetime(2023, 9, 5, tzinfo=pytz.timezone("America/Chicago"))
+    season_start = datetime.datetime(2024, 9, 5, tzinfo=pytz.timezone("America/Chicago"))
     delta = get_current_central_datetime() - season_start
     return int(delta.days / 7) + 1
 
@@ -109,6 +109,9 @@ def translate_team(input: str, output: str, team_name: str) -> str:
         {'espn': 'JAX', 'sleeper': 'JAX', 'fp': 'JAC', 'nfl': 'JAX'},
         {'espn': 'OAK', 'sleeper': 'LV', 'fp': 'LV', 'nfl': 'LV'},
     ]
+
+    if not team_name:
+        return ''
 
     for team in teams:
         if team.get(input) == team_name:
@@ -208,7 +211,7 @@ def update_all_scores(week: int = get_current_week()) -> dict:
 
         if platform == 'espn':
 
-            league = initialize_espn_league(league_id, 2023)
+            league = initialize_espn_league(league_id, 2024)
 
             for game in league.box_scores(week):
 
@@ -688,7 +691,7 @@ def update_teams():
 
         if league.get('platform') == 'espn':
 
-            url = f"https://fantasy.espn.com/apis/v3/games/ffl/seasons/2023/segments/0/leagues/{league.get('league_id')}?view=mTeam"
+            url = f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/2024/segments/0/leagues/{league.get('league_id')}?view=mTeam"
 
             data = requests.get(url, cookies={'espn_s2': league.get('s2'), 'swid': league.get('swid')}).json()
 
