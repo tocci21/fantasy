@@ -11,6 +11,20 @@
 * Questionable, Out, and IR designation outlining
 * Monitor all projections for sharp changes to notify on (not fully implemented)
 
+# Architecture
+
+* Python
+* Flask for the web framework
+* Jinja, HTML, Grid CSS for frontend design
+* BigQuery for DB backend
+
+# Workflow
+
+1. Update API endpoints get live league, team, matchup, score, projection, and game progress data
+2. Store each group of data in BigQuery
+3. Access the scoreboard for each profile
+4. Scoreboard loads the cached data based on the league and team data for your profile
+
 # Disclaimers
 
 * This was built for the 2023 season, so some things may not fully work yet for 2024. I've updated some code so it appears to work but no guarantees.
